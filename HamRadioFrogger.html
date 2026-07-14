@@ -339,10 +339,10 @@
     timeLeft: 60,
     maxTime: 60,
     slots: [false, false, false, false, false],
-    player: { col: 7, row: 14, x: 0, y: 0, facing: "up", hop: 0, dead: false },
+    player: { col: 7, row: 13, x: 0, y: 0, facing: "up", hop: 0, dead: false },
     onPlatform: null,
     lanes: [],
-    highestRow: 14,
+    highestRow: 13,
     message: "",
     messageT: 0,
     flash: 0,
@@ -605,14 +605,14 @@
 
   function resetPlayer() {
     state.player.col = 7;
-    state.player.row = 14;
+    state.player.row = 13;
     state.player.x = 7 * TILE + TILE / 2;
-    state.player.y = 14 * TILE + TILE / 2;
+    state.player.y = 13 * TILE + TILE / 2;
     state.player.facing = "up";
     state.player.hop = 0;
     state.player.dead = false;
     state.onPlatform = null;
-    state.highestRow = 14;
+    state.highestRow = 13;
     state.timeLeft = state.maxTime;
     state.moveCooldown = 0;
   }
@@ -1535,34 +1535,62 @@
     ctx.globalAlpha = 1;
   }
 
+  function wrapTextLines(text, maxWidth, font) {
+    ctx.font = font;
+    const words = text.split(/\s+/);
+    const lines = [];
+    let cur = "";
+    for (let i = 0; i < words.length; i++) {
+      const next = cur ? cur + " " + words[i] : words[i];
+      if (ctx.measureText(next).width > maxWidth && cur) {
+        lines.push(cur);
+        cur = words[i];
+      } else {
+        cur = next;
+      }
+    }
+    if (cur) lines.push(cur);
+    return lines;
+  }
+
   function drawOverlay() {
     if (state.mode === "title") {
       ctx.fillStyle = "rgba(8, 12, 24, 0.82)";
       ctx.fillRect(0, 0, W, CANVAS_H);
       ctx.textAlign = "center";
       ctx.fillStyle = "#3ddc97";
-      ctx.font = "bold 28px Segoe UI, system-ui, sans-serif";
-      ctx.fillText("HAM RADIO FROGGER", W / 2, 200);
+      ctx.font = "bold 26px Segoe UI, system-ui, sans-serif";
+      ctx.fillText("HAM RADIO FROGGER", W / 2, 120);
       ctx.fillStyle = "#ffc857";
-      ctx.font = "16px Segoe UI, system-ui, sans-serif";
-      ctx.fillText("Off-Grid Station Run", W / 2, 232);
-      ctx.fillStyle = "#e8eefc";
-      ctx.font = "14px Segoe UI, system-ui, sans-serif";
-      const lines = [
-        "You are a ham — not a frog.",
-        "Dodge HOA presidents & chicken banders.",
-        "Cross the creek on solar panels & masts.",
-        "Deliver PSU, transceiver, tuner, antenna & coax",
-        "to the ledge and fire up the off-grid station.",
-        "",
-        "Arrow keys / WASD to hop  ·  Click or Space to start",
+      ctx.font = "15px Segoe UI, system-ui, sans-serif";
+      ctx.fillText("Off-Grid Station Run", W / 2, 148);
+
+      const bodyFont = "13px Segoe UI, system-ui, sans-serif";
+      const maxW = W - 56;
+      const paragraphs = [
+        "You're a ham, not a frog, duh! Dodge HOA tyrants, chicken-band squawk boxers, rats eating your coax, and high-power mobiles blasting your ears off. Leap solar panels, tilting masts, and rogue orange extension cords across the creek—before sunset kills your juice. Haul PSU, rig, tuner, antenna & coax to the ledge like a boss and fire up your off-grid station to reach the next level.",
+        "73, W4OGP",
       ];
-      lines.forEach((ln, i) => {
-        ctx.fillStyle = i === lines.length - 1 ? "#3ddc97" : "#c5d0e6";
-        ctx.fillText(ln, W / 2, 290 + i * 22);
+      let y = 180;
+      ctx.font = bodyFont;
+      paragraphs.forEach((para, pi) => {
+        const lines = wrapTextLines(para, maxW, bodyFont);
+        lines.forEach((ln) => {
+          ctx.fillStyle = pi === 1 ? "#ffc857" : "#c5d0e6";
+          ctx.font = pi === 1 ? "bold 14px Segoe UI, system-ui, sans-serif" : bodyFont;
+          ctx.fillText(ln, W / 2, y);
+          y += pi === 1 ? 22 : 18;
+        });
+        y += 10;
       });
-      // demo man
-      drawMan(W / 2, 520, "up", 0);
+
+      y += 6;
+      ctx.fillStyle = "#3ddc97";
+      ctx.font = "bold 13px Segoe UI, system-ui, sans-serif";
+      ctx.fillText("Arrow keys / WASD to hop  ·  Click or Space to start", W / 2, y);
+
+      // demo man under the copy
+      drawMan(W / 2, Math.min(CANVAS_H - 80, y + 70), "up", 0);
       return;
     }
 
