@@ -1,0 +1,2262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ham Radio Superstore</title>
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #121a27;
+    --panel2: #1a2433;
+    --border: #2a3648;
+    --text: #e8eef7;
+    --muted: #8b9bb0;
+    --accent: #3dd68c;
+    --accent2: #4da3ff;
+    --warn: #e0a33a;
+    --danger: #ff5d57;
+    --purple: #b07cff;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--bg); color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    overflow: hidden;
+  }
+  #app {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 100vh;
+    max-height: 100dvh;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 12px;
+    background: linear-gradient(180deg, #152238, #0b1220);
+    border-bottom: 1px solid var(--border);
+    z-index: 6;
+  }
+  header h1 {
+    margin: 0; font-size: 1rem; color: #7dffa8; white-space: nowrap;
+  }
+  header h1 span { color: var(--accent2); }
+  .stats { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+  .stat {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 9px; font-size: 0.8rem;
+    display: flex; gap: 6px; align-items: baseline;
+  }
+  .stat b { color: var(--accent); font-variant-numeric: tabular-nums; }
+  .stat.warn b { color: var(--warn); }
+  .stat.danger b { color: var(--danger); }
+  .stat .lbl { color: var(--muted); font-size: 0.68rem; text-transform: uppercase; }
+  .header-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  button {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 10px; font-size: 0.8rem; cursor: pointer;
+    -webkit-user-select: none; user-select: none; touch-action: manipulation;
+  }
+  button:hover { background: #243246; }
+  button:active { transform: scale(0.97); }
+  button.primary { background: #1f8f4e; border-color: #2db86a; }
+  button.primary:hover { background: #27a85c; }
+  button.danger { background: #6b2420; border-color: #ff5d57; }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button.small { padding: 4px 8px; font-size: 0.72rem; }
+  button.glow {
+    box-shadow: 0 0 0 1px rgba(77,163,255,0.5), 0 0 14px rgba(77,163,255,0.35);
+    animation: pulseBtn 1.4s ease-in-out infinite;
+  }
+  @keyframes pulseBtn {
+    0%, 100% { box-shadow: 0 0 0 1px rgba(77,163,255,0.35), 0 0 8px rgba(77,163,255,0.2); }
+    50% { box-shadow: 0 0 0 2px rgba(77,163,255,0.7), 0 0 18px rgba(77,163,255,0.45); }
+  }
+
+  main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    min-height: 0; overflow: hidden;
+  }
+  @media (max-width: 960px) {
+    main { grid-template-columns: 1fr; grid-template-rows: minmax(240px, 48vh) minmax(0, 1fr); }
+  }
+
+  #floor-wrap {
+    position: relative; min-height: 0; overflow: hidden;
+    background:
+      radial-gradient(ellipse at 20% 10%, #1a2d4a 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, #14283a 0%, transparent 45%),
+      var(--bg);
+  }
+  #floor { width: 100%; height: 100%; display: block; cursor: grab; }
+  #floor.dragging { cursor: grabbing; }
+
+  #hud-overlay {
+    position: absolute; inset: 0; pointer-events: none;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    padding: 10px;
+    gap: 8px;
+  }
+  #mission-banner {
+    pointer-events: auto;
+    max-width: min(560px, 100%);
+    background: rgba(18,26,39,0.94);
+    border: 1px solid #3d7cff;
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+  }
+  #mission-banner h2 {
+    margin: 0 0 4px; font-size: 0.82rem; color: #9ec5ff;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  #mission-banner .goal {
+    margin: 0 0 8px; font-size: 0.95rem; font-weight: 600; color: var(--text);
+    line-height: 1.3;
+  }
+  #mission-banner .why {
+    margin: 0 0 8px; font-size: 0.75rem; color: var(--muted); line-height: 1.35;
+  }
+  #mission-banner .row { pointer-events: auto; }
+  #pipeline-hud {
+    justify-self: end; align-self: start;
+    background: rgba(18,26,39,0.9);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 0.72rem;
+    min-width: 180px;
+  }
+  #pipeline-hud .ph-title {
+    color: var(--muted); text-transform: uppercase; font-size: 0.65rem;
+    margin-bottom: 6px; letter-spacing: 0.05em;
+  }
+  .pipe-row {
+    display: flex; align-items: center; gap: 6px; margin: 3px 0;
+  }
+  .pipe-row .name { width: 62px; color: var(--muted); }
+  .pipe-row .bar {
+    flex: 1; height: 7px; background: #0b1220; border-radius: 4px;
+    border: 1px solid var(--border); overflow: hidden;
+  }
+  .pipe-row .bar > i { display: block; height: 100%; width: 0%; }
+  .pipe-row .val { width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+  #event-toast {
+    align-self: end; justify-self: start;
+    background: rgba(18,26,39,0.95); border: 1px solid var(--accent2);
+    color: var(--text); padding: 8px 12px; border-radius: 10px;
+    font-size: 0.85rem; max-width: 420px; opacity: 0;
+    transition: opacity 0.25s; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  }
+  #event-toast.show { opacity: 1; }
+
+  aside {
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    z-index: 5;
+  }
+  #objective-card {
+    flex: 0 0 auto;
+    padding: 10px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #172338, #121a27);
+  }
+  #objective-card .label {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #8eb6ff; margin-bottom: 4px;
+  }
+  #objective-card .text {
+    font-size: 0.88rem; font-weight: 600; line-height: 1.3; margin-bottom: 6px;
+  }
+  #objective-card .hint { font-size: 0.72rem; color: var(--muted); margin-bottom: 8px; line-height: 1.35; }
+  #checklist {
+    display: flex; flex-direction: column; gap: 3px; margin-bottom: 8px;
+  }
+  #checklist .item {
+    font-size: 0.72rem; color: var(--muted);
+    display: flex; gap: 6px; align-items: center;
+  }
+  #checklist .item.done { color: var(--accent); }
+  #checklist .item .box {
+    width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--border);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; flex-shrink: 0;
+  }
+  #checklist .item.done .box { background: #1f8f4e; border-color: #2db86a; color: #fff; }
+
+  .tabs {
+    display: flex; flex: 0 0 auto;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .tabs button {
+    flex: 1; border: none; border-radius: 0; border-bottom: 2px solid transparent;
+    background: transparent; padding: 9px 4px; font-size: 0.72rem; color: var(--muted);
+    white-space: nowrap; min-width: 0;
+  }
+  .tabs button.active {
+    color: var(--text); border-bottom-color: var(--accent2); background: #162033;
+  }
+
+  /* Critical: scroll stays inside panel, nothing escapes viewport */
+  .tab-panel {
+    display: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 10px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-panel.active { display: block; }
+
+  .section-title {
+    font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin: 10px 0 6px; border-bottom: 1px solid var(--border);
+    padding-bottom: 4px; position: sticky; top: -10px; background: var(--panel); z-index: 1;
+  }
+  .section-title:first-child { margin-top: 0; }
+  .card {
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 8px 10px; margin-bottom: 8px;
+  }
+  .card h3 {
+    margin: 0 0 4px; font-size: 0.86rem;
+    display: flex; justify-content: space-between; gap: 6px; align-items: center;
+    flex-wrap: wrap;
+  }
+  .card p { margin: 0; font-size: 0.74rem; color: var(--muted); line-height: 1.35; }
+  .card .meta { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; font-size: 0.7rem; }
+  .chip {
+    background: #0b1220; border: 1px solid var(--border); border-radius: 999px;
+    padding: 2px 8px; color: var(--muted); font-size: 0.7rem;
+  }
+  .chip.good { color: var(--accent); border-color: #1f8f4e; }
+  .chip.bad { color: var(--danger); border-color: #6b2420; }
+  .chip.warn { color: var(--warn); border-color: #8a6518; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-top: 6px; }
+  .bar {
+    height: 8px; background: #0b1220; border-radius: 4px; overflow: hidden;
+    border: 1px solid var(--border); margin-top: 4px;
+  }
+  .bar > i { display: block; height: 100%; width: 0%; }
+  .bar.green > i { background: var(--accent); }
+  .bar.orange > i { background: var(--warn); }
+  .bar.red > i { background: var(--danger); }
+  .bar.blue > i { background: var(--accent2); }
+  .bar.purple > i { background: var(--purple); }
+
+  .supplier-wrap {
+    display: flex; flex-wrap: wrap; gap: 5px;
+    max-height: 72px;
+    overflow-y: auto;
+    margin-bottom: 8px;
+    padding: 6px;
+    background: #0b1220;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .prod-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 6px;
+    align-items: center;
+    padding: 7px 8px;
+    margin-bottom: 6px;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+  }
+  .prod-row.locked { opacity: 0.5; }
+  .prod-row .name { font-size: 0.8rem; font-weight: 600; }
+  .prod-row .sub { font-size: 0.7rem; color: var(--muted); }
+  .prod-row .acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+  .staff-avatar {
+    width: 26px; height: 26px; border-radius: 50%; display: inline-flex;
+    align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 700;
+    margin-right: 6px; flex-shrink: 0;
+  }
+  .person { display: flex; align-items: center; gap: 2px; }
+  .price { color: var(--accent); font-weight: 600; }
+  .cost { color: var(--warn); }
+  #log {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem; color: var(--muted); line-height: 1.4;
+  }
+  #log .line { margin-bottom: 3px; border-bottom: 1px solid #1a2433; padding-bottom: 2px; }
+  #log .t { color: #4a5a70; margin-right: 6px; }
+  #log .good { color: var(--accent); }
+  #log .bad { color: var(--danger); }
+  #log .warn { color: var(--warn); }
+  #log .info { color: var(--accent2); }
+
+  footer {
+    border-top: 1px solid var(--border); padding: 5px 12px;
+    font-size: 0.7rem; color: var(--muted);
+    display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap;
+    background: #0b1220;
+  }
+
+  #modal-bg {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+    display: none; align-items: center; justify-content: center; z-index: 100;
+    padding: 16px;
+  }
+  #modal-bg.show { display: flex; }
+  #modal {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    max-width: 540px; width: 100%; max-height: 90vh; overflow: auto;
+    padding: 18px 20px; box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  #modal h2 { margin: 0 0 8px; font-size: 1.2rem; color: #7dffa8; }
+  #modal p { color: var(--muted); font-size: 0.88rem; line-height: 1.45; }
+  #modal ol, #modal ul { color: var(--text); font-size: 0.86rem; padding-left: 1.2em; }
+  #modal li { margin: 5px 0; }
+  .flow-diagram {
+    display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
+    font-size: 0.75rem; margin: 10px 0; padding: 8px;
+    background: #0b1220; border-radius: 8px; border: 1px solid var(--border);
+  }
+  .flow-diagram span {
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 6px; padding: 3px 7px;
+  }
+  .flow-diagram .arrow { background: transparent; border: none; color: var(--accent2); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>📡 Ham Radio <span>Superstore</span></h1>
+    <div class="stats">
+      <div class="stat"><span class="lbl">Cash</span><b id="st-cash">$8,000</b></div>
+      <div class="stat" title="Money from sales waiting to ship"><span class="lbl">Outgoing</span><b id="st-pending" style="color:#e0a33a">$0</b></div>
+      <div class="stat"><span class="lbl">Day</span><b id="st-day">1</b></div>
+      <div class="stat" id="st-happy-wrap"><span class="lbl">Happy</span><b id="st-happy">100%</b></div>
+      <div class="stat"><span class="lbl">$/min</span><b id="st-spm">$0</b></div>
+      <div class="stat"><span class="lbl">Sold</span><b id="st-sold">0</b></div>
+      <div class="stat"><span class="lbl">Store</span><b id="st-size">Starter Shack</b></div>
+    </div>
+    <div class="header-btns">
+      <button type="button" id="btn-sound">🔊</button>
+      <button type="button" id="btn-speed">▶ 1x</button>
+      <button type="button" id="btn-pause">⏸</button>
+      <button type="button" id="btn-help">Help</button>
+      <button type="button" id="btn-save">Save</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="floor-wrap">
+      <canvas id="floor"></canvas>
+      <div id="hud-overlay">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap">
+          <div id="mission-banner">
+            <h2>Your mission</h2>
+            <div class="goal" id="mission-goal">Open the store and hire your first crew</div>
+            <div class="why" id="mission-why">Follow the glowing button — grow cash while keeping customers happy.</div>
+            <div class="row">
+              <button type="button" class="primary glow" id="btn-mission-cta">Do next step</button>
+            </div>
+          </div>
+          <div id="pipeline-hud">
+            <div class="ph-title">Live pipeline</div>
+            <div class="pipe-row"><span class="name">Transit</span><div class="bar blue"><i id="p-transit"></i></div><span class="val" id="v-transit">0</span></div>
+            <div class="pipe-row"><span class="name">Dock</span><div class="bar green"><i id="p-dock"></i></div><span class="val" id="v-dock">0</span></div>
+            <div class="pipe-row"><span class="name">Stock</span><div class="bar blue"><i id="p-stock"></i></div><span class="val" id="v-stock">0</span></div>
+            <div class="pipe-row"><span class="name">Customers</span><div class="bar purple"><i id="p-cust"></i></div><span class="val" id="v-cust">0</span></div>
+            <div class="pipe-row"><span class="name">Shipping</span><div class="bar orange"><i id="p-ship" style="background:#e0a33a"></i></div><span class="val" id="v-ship">0</span></div>
+          </div>
+        </div>
+        <div></div>
+        <div id="event-toast"></div>
+      </div>
+    </div>
+
+    <aside>
+      <div id="objective-card">
+        <div class="label">What you should do</div>
+        <div class="text" id="obj-text">Start the game</div>
+        <div class="hint" id="obj-hint">Press Start, then follow the checklist.</div>
+        <div id="checklist"></div>
+        <div class="row">
+          <button type="button" class="primary small glow" id="btn-obj-cta" data-act="mission">Next action</button>
+          <button type="button" class="small" data-act="restock">Quick restock</button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button type="button" class="active" data-tab="play">Play</button>
+        <button type="button" data-tab="staff">Staff</button>
+        <button type="button" data-tab="catalog">Buy stock</button>
+        <button type="button" data-tab="orders">Trucks</button>
+        <button type="button" data-tab="expand">Grow</button>
+        <button type="button" data-tab="log">Log</button>
+      </div>
+      <div id="tab-play" class="tab-panel active"></div>
+      <div id="tab-staff" class="tab-panel"></div>
+      <div id="tab-catalog" class="tab-panel"></div>
+      <div id="tab-orders" class="tab-panel"></div>
+      <div id="tab-expand" class="tab-panel"></div>
+      <div id="tab-log" class="tab-panel"><div id="log"></div></div>
+    </aside>
+  </main>
+
+  <footer>
+    <span>Sell = 75% cash now · Ship clears Outgoing · Keep stock under 85% · Hire when rooms flash red.</span>
+    <span id="footer-status">Ready · 73</span>
+  </footer>
+</div>
+
+<div id="modal-bg"><div id="modal"></div></div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ── DATA ──────────────────────────────────────────────────
+  const SUPPLIERS = [
+    { id: "icom", name: "ICOM", reliability: 0.95, lead: 8, color: "#4da3ff" },
+    { id: "yaesu", name: "Yaesu", reliability: 0.93, lead: 9, color: "#f0883e" },
+    { id: "kenwood", name: "Kenwood", reliability: 0.92, lead: 10, color: "#b07cff" },
+    { id: "elecraft", name: "Elecraft", reliability: 0.97, lead: 14, color: "#3dd68c" },
+    { id: "flex", name: "FlexRadio", reliability: 0.94, lead: 16, color: "#79c0ff" },
+    { id: "acom", name: "ACOM", reliability: 0.9, lead: 18, color: "#d2a8ff" },
+    { id: "ameritron", name: "Ameritron", reliability: 0.88, lead: 12, color: "#ffa657" },
+    { id: "diamond", name: "Diamond", reliability: 0.96, lead: 7, color: "#7dffa8" },
+    { id: "mfj", name: "MFJ", reliability: 0.85, lead: 6, color: "#ff7b72" },
+    { id: "heil", name: "Heil", reliability: 0.94, lead: 8, color: "#e3b341" },
+    { id: "astron", name: "Astron", reliability: 0.95, lead: 7, color: "#56d4dd" },
+    { id: "ldge", name: "LDG", reliability: 0.9, lead: 9, color: "#db61a2" },
+    { id: "comet", name: "Comet", reliability: 0.93, lead: 8, color: "#39c5cf" },
+    { id: "rigexpert", name: "RigExpert", reliability: 0.94, lead: 11, color: "#8b9bb0" },
+    { id: "hygain", name: "Hy-Gain", reliability: 0.87, lead: 15, color: "#c9d1d9" },
+    { id: "westmtn", name: "West Mountain", reliability: 0.96, lead: 7, color: "#4da3ff" },
+    { id: "bioenno", name: "Bioenno", reliability: 0.95, lead: 8, color: "#3dd68c" },
+    { id: "anytone", name: "Anytone", reliability: 0.9, lead: 9, color: "#f778ba" },
+    { id: "xiegu", name: "Xiegu", reliability: 0.88, lead: 12, color: "#79c0ff" },
+    { id: "palstar", name: "Palstar", reliability: 0.92, lead: 13, color: "#e0a33a" },
+  ];
+
+  const PRODUCTS = [
+    { id: "ic7300", name: "IC-7300 HF/50MHz", brand: "icom", cat: "transceiver", cost: 950, price: 1299, size: 2, demand: 1.4, unlock: 0 },
+    { id: "ic705", name: "IC-705 QRP", brand: "icom", cat: "transceiver", cost: 1100, price: 1499, size: 1, demand: 1.1, unlock: 1 },
+    { id: "ic9700", name: "IC-9700 VHF/UHF", brand: "icom", cat: "transceiver", cost: 1600, price: 2199, size: 2, demand: 0.7, unlock: 3 },
+    { id: "ft891", name: "FT-891 HF Mobile", brand: "yaesu", cat: "transceiver", cost: 580, price: 779, size: 2, demand: 1.5, unlock: 0 },
+    { id: "ft991a", name: "FT-991A All-Mode", brand: "yaesu", cat: "transceiver", cost: 1050, price: 1399, size: 2, demand: 1.2, unlock: 1 },
+    { id: "ftdx10", name: "FTDX-10 HF", brand: "yaesu", cat: "transceiver", cost: 1400, price: 1899, size: 2, demand: 0.9, unlock: 2 },
+    { id: "ts590sg", name: "TS-590SG HF", brand: "kenwood", cat: "transceiver", cost: 1200, price: 1649, size: 2, demand: 0.85, unlock: 2 },
+    { id: "ts890s", name: "TS-890S HF", brand: "kenwood", cat: "transceiver", cost: 3000, price: 3999, size: 3, demand: 0.4, unlock: 4 },
+    { id: "kx3", name: "Elecraft KX3", brand: "elecraft", cat: "transceiver", cost: 1100, price: 1599, size: 1, demand: 0.8, unlock: 2 },
+    { id: "k4", name: "Elecraft K4", brand: "elecraft", cat: "transceiver", cost: 3800, price: 5199, size: 3, demand: 0.35, unlock: 5 },
+    { id: "flex6400", name: "Flex-6400 SDR", brand: "flex", cat: "transceiver", cost: 2200, price: 2999, size: 2, demand: 0.55, unlock: 3 },
+    { id: "flex6600", name: "Flex-6600 SDR", brand: "flex", cat: "transceiver", cost: 4200, price: 5499, size: 3, demand: 0.3, unlock: 5 },
+    { id: "g90", name: "Xiegu G90", brand: "xiegu", cat: "transceiver", cost: 380, price: 499, size: 1, demand: 1.3, unlock: 0 },
+    { id: "atd878", name: "Anytone AT-D878UVII", brand: "anytone", cat: "ht", cost: 220, price: 299, size: 1, demand: 1.6, unlock: 0 },
+    { id: "acom1000", name: "ACOM 1000 Amp", brand: "acom", cat: "amplifier", cost: 2800, price: 3799, size: 4, demand: 0.35, unlock: 4 },
+    { id: "acom1200s", name: "ACOM 1200S", brand: "acom", cat: "amplifier", cost: 3600, price: 4799, size: 4, demand: 0.28, unlock: 5 },
+    { id: "al80b", name: "Ameritron AL-80B", brand: "ameritron", cat: "amplifier", cost: 1600, price: 2199, size: 4, demand: 0.5, unlock: 3 },
+    { id: "als600", name: "Ameritron ALS-600", brand: "ameritron", cat: "amplifier", cost: 1900, price: 2599, size: 4, demand: 0.4, unlock: 4 },
+    { id: "x300a", name: "Diamond X300A", brand: "diamond", cat: "antenna", cost: 120, price: 179, size: 2, demand: 1.8, unlock: 0 },
+    { id: "x50a", name: "Diamond X50A", brand: "diamond", cat: "antenna", cost: 70, price: 109, size: 1, demand: 2.0, unlock: 0 },
+    { id: "gp15", name: "Comet GP-15", brand: "comet", cat: "antenna", cost: 130, price: 189, size: 2, demand: 1.2, unlock: 1 },
+    { id: "th3mk4", name: "Hy-Gain TH-3MK4", brand: "hygain", cat: "antenna", cost: 520, price: 729, size: 5, demand: 0.45, unlock: 3 },
+    { id: "mfj1778", name: "MFJ-1778 G5RV", brand: "mfj", cat: "antenna", cost: 55, price: 89, size: 1, demand: 1.5, unlock: 0 },
+    { id: "hm219", name: "ICOM HM-219 Mic", brand: "icom", cat: "accessory", cost: 55, price: 89, size: 1, demand: 1.1, unlock: 0 },
+    { id: "heilpr781", name: "Heil PR-781", brand: "heil", cat: "accessory", cost: 140, price: 199, size: 1, demand: 0.9, unlock: 1 },
+    { id: "rs35m", name: "Astron RS-35M", brand: "astron", cat: "power", cost: 180, price: 259, size: 2, demand: 1.4, unlock: 0 },
+    { id: "ss30m", name: "Astron SS-30M", brand: "astron", cat: "power", cost: 130, price: 189, size: 1, demand: 1.3, unlock: 1 },
+    { id: "blf40", name: "Bioenno BLF-12045A", brand: "bioenno", cat: "power", cost: 200, price: 289, size: 1, demand: 1.2, unlock: 1 },
+    { id: "ldgat100", name: "LDG AT-100ProII", brand: "ldge", cat: "tuner", cost: 180, price: 249, size: 1, demand: 1.0, unlock: 1 },
+    { id: "re60", name: "RigExpert AA-55", brand: "rigexpert", cat: "test", cost: 280, price: 379, size: 1, demand: 0.85, unlock: 2 },
+    { id: "rigrunt", name: "RIGrunner 4005i", brand: "westmtn", cat: "power", cost: 110, price: 159, size: 1, demand: 1.1, unlock: 1 },
+    { id: "mfj941e", name: "MFJ-941E Tuner", brand: "mfj", cat: "tuner", cost: 130, price: 189, size: 1, demand: 1.2, unlock: 0 },
+    { id: "palstarat2k", name: "Palstar AT2K", brand: "palstar", cat: "tuner", cost: 620, price: 849, size: 2, demand: 0.5, unlock: 3 },
+    { id: "coax100", name: "LMR-400 100ft", brand: "mfj", cat: "accessory", cost: 90, price: 139, size: 2, demand: 1.6, unlock: 0 },
+    { id: "htbattery", name: "HT Battery Pack", brand: "anytone", cat: "accessory", cost: 25, price: 45, size: 1, demand: 1.7, unlock: 0 },
+  ];
+
+  const STAFF_POOL = {
+    sales: [
+      { id: "peter", name: "Peter", skill: 1.1, wage: 45, blurb: "SDR waterfall demos." },
+      { id: "mike", name: "Mike", skill: 1.05, wage: 42, blurb: "HF contesting expert." },
+      { id: "roger", name: "Roger", skill: 1.0, wage: 40, blurb: "Yaesu menu master." },
+      { id: "linda", name: "Linda", skill: 1.15, wage: 48, blurb: "Converts browsers." },
+      { id: "tom", name: "Tom", skill: 0.95, wage: 38, blurb: "Accurate quotes." },
+      { id: "sara", name: "Sara", skill: 1.2, wage: 52, blurb: "Digital modes pro." },
+      { id: "chris", name: "Chris", skill: 1.08, wage: 44, blurb: "Mobile install upsells." },
+      { id: "nina", name: "Nina", skill: 1.12, wage: 46, blurb: "Antenna consultant." },
+    ],
+    receiving: [
+      { id: "stephany", name: "Stephany", skill: 1.15, wage: 42, blurb: "Best first hire — dock ace." },
+      { id: "bob", name: "Bob", skill: 1.0, wage: 38, blurb: "Pallet jack pro." },
+      { id: "alice", name: "Alice", skill: 1.08, wage: 40, blurb: "Barcode ninja." },
+      { id: "frank", name: "Frank", skill: 0.95, wage: 36, blurb: "Careful unpacker." },
+      { id: "kim", name: "Kim", skill: 1.12, wage: 43, blurb: "QC specialist." },
+      { id: "omar", name: "Omar", skill: 1.05, wage: 39, blurb: "Night freight." },
+    ],
+    shipping: [
+      { id: "dave", name: "Dave", skill: 1.15, wage: 42, blurb: "Best first shipper." },
+      { id: "jen", name: "Jen", skill: 1.05, wage: 40, blurb: "Fast labels." },
+      { id: "ray", name: "Ray", skill: 1.0, wage: 38, blurb: "Freight consolidator." },
+      { id: "pat", name: "Pat", skill: 1.1, wage: 41, blurb: "Fragile antennas." },
+      { id: "gus", name: "Gus", skill: 0.95, wage: 36, blurb: "UPS whisperer." },
+      { id: "lee", name: "Lee", skill: 1.18, wage: 47, blurb: "Same-day lead." },
+    ],
+  };
+
+  const STORE_TIERS = [
+    { name: "Starter Shack", capMult: 1, maxStaff: 6, cost: 0, w: 30, h: 20 },
+    { name: "Neighborhood Outlet", capMult: 1.6, maxStaff: 10, cost: 8000, w: 36, h: 24 },
+    { name: "Regional Superstore", capMult: 2.4, maxStaff: 16, cost: 25000, w: 44, h: 30 },
+    { name: "Metro Ham Mega-Mart", capMult: 3.5, maxStaff: 24, cost: 75000, w: 52, h: 36 },
+    { name: "National Flagship", capMult: 5, maxStaff: 36, cost: 200000, w: 62, h: 42 },
+  ];
+
+  const DEPT_KEYS = ["receiving", "stock", "sales", "shipping", "manager"];
+
+  // ── AUDIO ─────────────────────────────────────────────────
+  const AudioSys = {
+    ctx: null, enabled: true, master: null, ambient: null,
+    init() {
+      if (this.ctx) return;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = 0.32;
+      this.master.connect(this.ctx.destination);
+    },
+    resume() { this.init(); if (this.ctx.state === "suspended") this.ctx.resume(); },
+    setEnabled(on) {
+      this.enabled = on;
+      if (this.master) this.master.gain.value = on ? 0.32 : 0;
+      if (on) this.startAmbient(); else this.stopAmbient();
+    },
+    tone(freq, dur, type = "sine", gain = 0.1, when = 0) {
+      if (!this.enabled) return;
+      this.init();
+      const t = this.ctx.currentTime + when;
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(gain, t + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g); g.connect(this.master);
+      o.start(t); o.stop(t + dur + 0.02);
+    },
+    cw(text = "73") {
+      if (!this.enabled) return;
+      this.init();
+      const morse = { "7": "--...", "3": "...--", "C": "-.-.", "Q": "--.-", " ": " ", "H": "....", "R": ".-.", "O": "---", "S": "..." };
+      let t = 0; const u = 0.055;
+      for (const ch of text.toUpperCase()) {
+        for (const s of (morse[ch] || "")) {
+          if (s === ".") { this.tone(700, u, "sine", 0.07, t); t += u * 2; }
+          else if (s === "-") { this.tone(700, u * 3, "sine", 0.07, t); t += u * 4; }
+        }
+        t += u * 3;
+      }
+    },
+    cash() { this.tone(880, 0.05, "square", 0.05); this.tone(1320, 0.07, "square", 0.04, 0.05); },
+    dock() { this.tone(200, 0.08, "square", 0.04); this.tone(160, 0.1, "square", 0.03, 0.07); },
+    hire() { this.tone(523, 0.07, "sine", 0.06); this.tone(659, 0.07, "sine", 0.06, 0.07); this.tone(784, 0.1, "sine", 0.07, 0.14); },
+    expand() { [392, 494, 587, 784].forEach((f, i) => this.tone(f, 0.12, "sawtooth", 0.03, i * 0.09)); },
+    anger() { this.tone(150, 0.18, "sawtooth", 0.05); },
+    henry() { this.tone(300, 0.1, "triangle", 0.06); this.cw("CQ"); },
+    click() { this.tone(620, 0.025, "square", 0.025); },
+    startAmbient() {
+      if (!this.enabled || this.ambient) return;
+      this.init();
+      const o = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      o.type = "sine"; o.frequency.value = 52; g.gain.value = 0.01;
+      o.connect(g); g.connect(this.master); o.start();
+      this.ambient = { o, g };
+    },
+    stopAmbient() {
+      if (this.ambient) { try { this.ambient.o.stop(); } catch (_) {} this.ambient = null; }
+    },
+  };
+
+  // ── STATE ─────────────────────────────────────────────────
+  function defaultState() {
+    const inv = {};
+    PRODUCTS.forEach(p => { inv[p.id] = p.unlock === 0 ? (p.cat === "transceiver" ? 2 : 3) : 0; });
+    return {
+      cash: 8000, day: 1, time: 0, storeTier: 0,
+      satisfaction: 100, reputation: 18,
+      paused: false, speed: 1,
+      departments: {
+        receiving: { level: 1, queue: 0, queueCap: 12, process: 0, progress: 0, inbound: [] },
+        stock: { level: 1, cap: 40 },
+        sales: { level: 1, queue: 0, queueCap: 10, customers: 0, salesToday: 0, progress: 0 },
+        shipping: { level: 1, queue: 0, queueCap: 14, backlog: 0, progress: 0 },
+        manager: { level: 1, lastEvent: 0, salesBoost: 0 },
+      },
+      staff: {
+        manager: [{ id: "henry", name: "Henry", role: "manager", skill: 1.2, train: 1, wage: 60 }],
+        // Starter crew so cash can flow immediately
+        sales: [{ id: "peter", name: "Peter", role: "sales", skill: 1.1, train: 1, wage: 40 }],
+        receiving: [{ id: "stephany", name: "Stephany", role: "receiving", skill: 1.15, train: 1, wage: 38 }],
+        shipping: [{ id: "dave", name: "Dave", role: "shipping", skill: 1.15, train: 1, wage: 38 }],
+      },
+      inventory: inv,
+      onOrder: [],
+      pendingShip: [],
+      unlockLevel: 0,
+      totalRevenue: 0, totalSold: 0, customersServed: 0,
+      angryEvents: 0, henryEvents: 0,
+      selectedDept: "sales",
+      log: [],
+      tutorialStep: 0,
+      flags: { hiredRecv: true, hiredSales: true, hiredShip: true, ordered: false, sold: false },
+    };
+  }
+
+  function pendingCash() {
+    return G.pendingShip.reduce((a, j) => a + (j.value || 0), 0);
+  }
+
+  /** Throughput units/sec for a department (staff skill + level + base floor). */
+  function deptRate(role, level, base = 0.35) {
+    const skill = roleSkill(role);
+    // Always-on floor so a department is never completely dead
+    const floor = role === "manager" ? 0 : 0.45;
+    const staffPart = skill > 0 ? skill * 1.15 : floor;
+    return (staffPart + base) * (0.85 + level * 0.35);
+  }
+
+  let G = defaultState();
+  let lastTs = 0, panelDirty = true, logDirty = true;
+  let lastPanelBuild = 0, lastStatsUpdate = 0, lastMissionUpdate = 0;
+  let toastTimer = 0, revenueWindow = [];
+  let floaters = [], packages = [], walkers = [], trucks = [], sparks = [];
+  let cam = { x: 40, y: 30, dragging: false, lx: 0, ly: 0, moved: false };
+  let animT = 0, activeTab = "play", gameStarted = false;
+  let currentMission = null;
+
+  const $ = (s) => document.querySelector(s);
+  const fmt$ = (n) => {
+    const v = Math.floor(n);
+    if (Math.abs(v) >= 1e6) return "$" + (v / 1e6).toFixed(2) + "M";
+    if (Math.abs(v) >= 1e4) return "$" + (v / 1e3).toFixed(1) + "k";
+    return "$" + v.toLocaleString();
+  };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = (a) => a[Math.floor(Math.random() * a.length)];
+  const product = (id) => PRODUCTS.find(p => p.id === id);
+  const supplier = (id) => SUPPLIERS.find(s => s.id === id);
+
+  function log(msg, cls = "info") {
+    G.log.unshift({ t: "D" + G.day, msg, cls });
+    if (G.log.length > 60) G.log.pop();
+    logDirty = true;
+  }
+  function markPanelDirty() { panelDirty = true; }
+  function toast(msg, ms = 3000) {
+    const el = $("#event-toast");
+    el.textContent = msg;
+    el.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove("show"), ms);
+  }
+
+  function totalInventoryUnits() { return Object.values(G.inventory).reduce((a, b) => a + b, 0); }
+  function stockCap() { return Math.floor(G.departments.stock.cap * STORE_TIERS[G.storeTier].capMult); }
+  function staffCount() {
+    return G.staff.sales.length + G.staff.receiving.length + G.staff.shipping.length + G.staff.manager.length;
+  }
+  function roleSkill(role) {
+    const list = G.staff[role] || [];
+    if (!list.length) return role === "manager" ? 1 : 0;
+    return list.reduce((s, w) => s + w.skill * (w.train || 1), 0);
+  }
+  function wagesPerDay() {
+    let w = 0;
+    for (const role of Object.keys(G.staff)) for (const s of G.staff[role]) w += s.wage || 0;
+    return w;
+  }
+  function unlockedProducts() { return PRODUCTS.filter(p => p.unlock <= G.unlockLevel); }
+  function currentSalesPerMin() { return revenueWindow.reduce((a, r) => a + r.v, 0); }
+
+  // ── MISSIONS / GUIDANCE ───────────────────────────────────
+  function getMission() {
+    const stock = totalInventoryUnits();
+    const cap = stockCap();
+    const clutter = stock / Math.max(1, cap);
+    const dockQ = G.departments.receiving.queue;
+    const shipQ = G.pendingShip.length;
+    const salesStaff = G.staff.sales.length;
+    const recvStaff = G.staff.receiving.length;
+    const shipStaff = G.staff.shipping.length;
+
+    if (!gameStarted) {
+      return {
+        id: "start",
+        goal: "Click Start Selling to open the store",
+        why: "You already have Stephany, Peter, and Dave on the team. Start and watch cash roll in.",
+        cta: "Open welcome",
+        action: () => showModal(WELCOME_HTML),
+        checks: [
+          { label: "Start the store", done: false },
+          { label: "Starter crew ready", done: true },
+          { label: "Keep shelves stocked", done: false },
+          { label: "Watch cash grow", done: false },
+        ],
+      };
+    }
+
+    if (recvStaff === 0) {
+      return {
+        id: "hire-recv",
+        goal: "Hire Stephany in Receiving",
+        why: "Trucks dump gear on the dock. Without receiving staff, stock never reaches the floor.",
+        cta: "Hire Stephany",
+        action: () => { setTab("staff"); renderPanels(true); hireStaff("receiving", "stephany"); },
+        tab: "staff",
+        checks: buildChecks(),
+      };
+    }
+    if (salesStaff === 0) {
+      return {
+        id: "hire-sales",
+        goal: "Hire a salesperson (Peter is great)",
+        why: "Customers arrive on their own. Sales staff turn visits into orders — and cash.",
+        cta: "Hire Peter",
+        action: () => { setTab("staff"); renderPanels(true); hireStaff("sales", "peter"); },
+        tab: "staff",
+        checks: buildChecks(),
+      };
+    }
+    if (shipStaff === 0) {
+      return {
+        id: "hire-ship",
+        goal: "Hire Dave in Shipping",
+        why: "Shipping clears the Outgoing queue and keeps customers happy.",
+        cta: "Hire Dave",
+        action: () => { setTab("staff"); renderPanels(true); hireStaff("shipping", "dave"); },
+        tab: "staff",
+        checks: buildChecks(),
+      };
+    }
+    if (stock < 10 && G.onOrder.length === 0) {
+      return {
+        id: "order",
+        goal: "Order more inventory (or Quick restock)",
+        why: "Empty shelves stop sales. Restock popular antennas & HTs — they sell fast.",
+        cta: "Quick restock now",
+        action: () => autoRestock(),
+        tab: "catalog",
+        checks: buildChecks(),
+      };
+    }
+    if (shipQ > 10 || pendingCash() > G.cash * 0.8) {
+      return {
+        id: "ship-bottleneck",
+        goal: "Clear shipping (Outgoing has " + fmt$(pendingCash()) + ")",
+        why: "Sales already paid most cash, but backlog still angers customers. Hire shippers or upgrade Shipping.",
+        cta: shipStaff < 2 ? "Hire another shipper" : "Upgrade shipping",
+        action: () => {
+          if (shipStaff < 2) { setTab("staff"); renderPanels(true); }
+          else { setTab("expand"); renderPanels(true); upgradeDept("shipping"); }
+        },
+        checks: buildChecks(),
+      };
+    }
+    if (dockQ > 8) {
+      return {
+        id: "dock-bottleneck",
+        goal: "Clear the receiving dock",
+        why: "Pallets are stacking up. Hire more receiving staff or upgrade the dock.",
+        cta: recvStaff < 2 ? "Hire receiving help" : "Upgrade receiving",
+        action: () => {
+          if (recvStaff < 2) { setTab("staff"); renderPanels(true); }
+          else upgradeDept("receiving");
+        },
+        checks: buildChecks(),
+      };
+    }
+    if (clutter > 0.88) {
+      return {
+        id: "clutter",
+        goal: "Reduce stockroom clutter",
+        why: "Overfull aisles anger customers. Expand stock/building or stop ordering until sales catch up.",
+        cta: "Upgrade stock capacity",
+        action: () => { setTab("expand"); renderPanels(true); upgradeDept("stock"); },
+        checks: buildChecks(),
+      };
+    }
+    if (G.satisfaction < 55) {
+      return {
+        id: "happy",
+        goal: "Raise customer satisfaction",
+        why: "Clear bottlenecks, keep stock available, and train sales. Henry may jump in when sales lag.",
+        cta: "Review Play tab",
+        action: () => { setTab("play"); renderPanels(true); },
+        checks: buildChecks(),
+      };
+    }
+    if (G.cash > 9000 && G.storeTier === 0) {
+      return {
+        id: "expand",
+        goal: "Expand the building",
+        why: "You have cash for a bigger store — more stock space and headcount.",
+        cta: "Expand store",
+        action: () => { setTab("expand"); renderPanels(true); expandStore(); },
+        checks: buildChecks(),
+      };
+    }
+    if (salesStaff < 2 && G.cash > 800) {
+      return {
+        id: "more-sales",
+        goal: "Hire another salesperson",
+        why: "More sales skill = more revenue. Train existing staff too.",
+        cta: "Open Staff",
+        action: () => { setTab("staff"); renderPanels(true); },
+        checks: buildChecks(),
+      };
+    }
+    return {
+      id: "idle-grow",
+      goal: "Grow revenue and unlock better gear",
+      why: "Restock popular items, train staff, upgrade departments, expand the building. Watch the animated floor for bottlenecks (red bars).",
+      cta: "Quick restock",
+      action: () => autoRestock(),
+      checks: buildChecks(),
+    };
+  }
+
+  function buildChecks() {
+    return [
+      { label: "Starter crew on payroll", done: G.staff.receiving.length > 0 && G.staff.sales.length > 0 && G.staff.shipping.length > 0 },
+      { label: "Keep shelves stocked", done: totalInventoryUnits() >= 8 || G.onOrder.length > 0 },
+      { label: "Make sales (cash grows)", done: G.totalRevenue > 500 },
+      { label: "Hire extra help as you grow", done: staffCount() >= 6 },
+      { label: "Keep happiness ≥ 70%", done: G.satisfaction >= 70 },
+    ];
+  }
+
+  function updateMissionUI() {
+    currentMission = getMission();
+    $("#mission-goal").textContent = currentMission.goal;
+    $("#mission-why").textContent = currentMission.why;
+    $("#btn-mission-cta").textContent = currentMission.cta;
+    $("#obj-text").textContent = currentMission.goal;
+    $("#obj-hint").textContent = currentMission.why;
+    $("#btn-obj-cta").textContent = currentMission.cta;
+    const cl = $("#checklist");
+    cl.innerHTML = currentMission.checks.map(c =>
+      `<div class="item ${c.done ? "done" : ""}"><span class="box">${c.done ? "✓" : ""}</span>${c.label}</div>`
+    ).join("");
+  }
+
+  // ── ACTIONS ───────────────────────────────────────────────
+  function hireStaff(role, personId) {
+    const pool = STAFF_POOL[role];
+    if (!pool) return;
+    const person = pool.find(p => p.id === personId);
+    if (!person || G.staff[role].some(s => s.id === personId)) return;
+    if (staffCount() >= STORE_TIERS[G.storeTier].maxStaff) {
+      toast("Building full — expand first!"); return;
+    }
+    const cost = person.wage * 3;
+    if (G.cash < cost) { toast("Need " + fmt$(cost) + " to hire"); return; }
+    G.cash -= cost;
+    G.staff[role].push({ id: person.id, name: person.name, role, skill: person.skill, train: 1, wage: person.wage });
+    if (role === "receiving") G.flags.hiredRecv = true;
+    if (role === "sales") G.flags.hiredSales = true;
+    if (role === "shipping") G.flags.hiredShip = true;
+    AudioSys.hire();
+    log(`Hired ${person.name} (${role}).`, "good");
+    toast(`${person.name} joined ${role}!`);
+    spawnSpark(deptCenter(role === "manager" ? "manager" : role).x, deptCenter(role === "manager" ? "manager" : role).y, "#3dd68c");
+    markPanelDirty();
+  }
+
+  function trainStaff(role, personId) {
+    const s = G.staff[role].find(x => x.id === personId);
+    if (!s || s.train >= 2.5) return;
+    const cost = Math.floor(80 * s.train * (role === "sales" ? 1.2 : 1));
+    if (G.cash < cost) { toast("Need " + fmt$(cost)); return; }
+    G.cash -= cost;
+    s.train = Math.min(2.5, +(s.train + 0.15).toFixed(2));
+    s.skill = +(s.skill * 1.02).toFixed(3);
+    AudioSys.click();
+    log(`Trained ${s.name} → ×${s.train.toFixed(2)}`, "info");
+    markPanelDirty();
+  }
+
+  function fireStaff(role, personId) {
+    if (role === "manager") return;
+    const idx = G.staff[role].findIndex(s => s.id === personId);
+    if (idx < 0) return;
+    const s = G.staff[role][idx];
+    G.staff[role].splice(idx, 1);
+    log(`${s.name} left.`, "warn");
+    markPanelDirty();
+  }
+
+  function orderProduct(productId, qty) {
+    const p = product(productId);
+    if (!p || p.unlock > G.unlockLevel) return;
+    qty = Math.max(1, Math.min(50, qty | 0));
+    const cost = p.cost * qty;
+    if (G.cash < cost) { toast("Not enough cash"); return; }
+    const sup = supplier(p.brand);
+    const lead = (sup ? sup.lead : 10) * (0.85 + Math.random() * 0.3);
+    const delay = (sup && Math.random() > sup.reliability) ? lead * 0.45 : 0;
+    G.cash -= cost;
+    G.onOrder.push({
+      id: "ord_" + Math.random().toString(36).slice(2, 8),
+      productId, qty, cost, supplier: p.brand,
+      arriveAt: G.time + lead + delay,
+    });
+    G.flags.ordered = true;
+    AudioSys.dock();
+    log(`Ordered ${qty}× ${p.name} from ${sup?.name || p.brand}.`, "info");
+    toast(`Truck en route: ${qty}× ${p.name}`);
+    // visual truck
+    trucks.push({ t: 0, life: 0, productId, qty, life: 1 });
+    markPanelDirty();
+  }
+
+  function autoRestock() {
+    let n = 0;
+    // Prefer high demand / lower cost so cash turns over quickly
+    const list = unlockedProducts().slice().sort((a, b) => (b.demand / Math.max(1, b.cost)) - (a.demand / Math.max(1, a.cost)));
+    const reserve = 400; // keep operating cash
+    for (const p of list) {
+      const q = G.inventory[p.id] || 0;
+      const incoming = G.onOrder.filter(o => o.productId === p.id).reduce((a, o) => a + o.qty, 0);
+      if (q + incoming < 4) {
+        const qty = Math.min(4, 4 - q - incoming);
+        if (qty > 0 && G.cash - p.cost * qty >= reserve) { orderProduct(p.id, qty); n++; }
+      }
+      if (n >= 6) break;
+    }
+    if (!n) toast("Nothing to restock (keep ~$400 reserve, or shelves are fine)");
+    else toast(`Restocked ${n} product lines`);
+  }
+
+  function upgradeDept(dept) {
+    const d = G.departments[dept];
+    if (!d) return;
+    const costs = {
+      receiving: [0, 1200, 3500, 9000, 22000, 50000],
+      stock: [0, 1000, 3000, 8000, 20000, 45000],
+      sales: [0, 1500, 4000, 11000, 28000, 60000],
+      shipping: [0, 1200, 3200, 8500, 21000, 48000],
+      manager: [0, 2000, 6000, 15000, 40000, 90000],
+    };
+    const price = (costs[dept] || [])[d.level];
+    if (price == null) { toast("Max level"); return; }
+    if (G.cash < price) { toast("Need " + fmt$(price)); return; }
+    G.cash -= price;
+    d.level++;
+    if (dept === "receiving") d.queueCap = 12 + d.level * 6;
+    if (dept === "stock") d.cap = 40 + d.level * 25;
+    if (dept === "sales") d.queueCap = 8 + d.level * 4;
+    if (dept === "shipping") d.queueCap = 10 + d.level * 5;
+    if (d.level >= 2) G.unlockLevel = Math.max(G.unlockLevel, 1);
+    if (d.level >= 3) G.unlockLevel = Math.max(G.unlockLevel, 2);
+    AudioSys.expand();
+    log(`Upgraded ${dept} to Lv${d.level}.`, "good");
+    toast(`${dept} → Level ${d.level}`);
+    markPanelDirty();
+  }
+
+  function deptUpgradeCost(dept) {
+    const costs = {
+      receiving: [0, 1200, 3500, 9000, 22000, 50000],
+      stock: [0, 1000, 3000, 8000, 20000, 45000],
+      sales: [0, 1500, 4000, 11000, 28000, 60000],
+      shipping: [0, 1200, 3200, 8500, 21000, 48000],
+      manager: [0, 2000, 6000, 15000, 40000, 90000],
+    };
+    return (costs[dept] || [])[G.departments[dept].level] ?? null;
+  }
+
+  function expandStore() {
+    if (G.storeTier >= STORE_TIERS.length - 1) { toast("Already flagship!"); return; }
+    const next = STORE_TIERS[G.storeTier + 1];
+    if (G.cash < next.cost) { toast("Need " + fmt$(next.cost)); return; }
+    G.cash -= next.cost;
+    G.storeTier++;
+    G.unlockLevel = Math.max(G.unlockLevel, Math.min(5, G.storeTier + 1));
+    AudioSys.expand(); AudioSys.cw("73");
+    log(`Expanded to ${next.name}!`, "good");
+    toast("🏗️ " + next.name);
+    markPanelDirty();
+  }
+
+  function saveGame() {
+    try {
+      localStorage.setItem("hrs_save_v2", JSON.stringify(G));
+      toast("Saved");
+    } catch (_) { toast("Save failed"); }
+  }
+  function loadGame() {
+    try {
+      const raw = localStorage.getItem("hrs_save_v2") || localStorage.getItem("hrs_save_v1");
+      if (!raw) { toast("No save found"); return false; }
+      const loaded = JSON.parse(raw);
+      G = Object.assign(defaultState(), loaded);
+      // Merge nested department fields so progress accumulators exist
+      const base = defaultState();
+      for (const k of Object.keys(base.departments)) {
+        G.departments[k] = Object.assign({}, base.departments[k], (loaded.departments || {})[k]);
+        if (G.departments[k].progress == null) G.departments[k].progress = 0;
+      }
+      if (!G.departments.receiving.inbound) G.departments.receiving.inbound = [];
+      if (!G.flags) G.flags = { hiredRecv: true, hiredSales: true, hiredShip: true, ordered: true, sold: G.totalSold > 0 };
+      // Rescue broken old saves that never accumulated progress (no revenue)
+      if ((G.totalRevenue || 0) < 1 && staffCount() <= 1) {
+        G.staff = defaultState().staff;
+        G.cash = Math.max(G.cash, 8000);
+        G.flags = defaultState().flags;
+        toast("Save upgraded with starter crew");
+      }
+      G.paused = false;
+      markPanelDirty();
+      toast("Loaded");
+      return true;
+    } catch (_) { toast("Load failed"); return false; }
+  }
+
+  // ── SIMULATION ────────────────────────────────────────────
+  function tick(dt) {
+    if (G.paused || !gameStarted) return;
+    const t = dt * G.speed;
+    G.time += t;
+    animT += t;
+
+    const dayLen = 60;
+    const prevDay = G.day;
+    G.day = 1 + Math.floor(G.time / dayLen);
+    if (G.day !== prevDay) {
+      const wage = wagesPerDay();
+      // Soft wages: never wipe the player to zero early on
+      const paid = Math.min(wage, Math.max(0, G.cash - 200));
+      G.cash -= paid;
+      G.departments.sales.salesToday = 0;
+      log(`Day ${G.day}: wages ${fmt$(paid)}${paid < wage ? " (partial)" : ""}.`, "info");
+      if (G.cash < 300) G.satisfaction = Math.max(0, G.satisfaction - 2);
+      G.reputation = clamp(G.reputation + (G.satisfaction - 70) * 0.02, 0, 100);
+      if (G.totalRevenue > 15000) G.unlockLevel = Math.max(G.unlockLevel, 2);
+      if (G.totalRevenue > 50000) G.unlockLevel = Math.max(G.unlockLevel, 3);
+      if (G.totalRevenue > 120000) G.unlockLevel = Math.max(G.unlockLevel, 4);
+      if (G.totalRevenue > 300000) G.unlockLevel = Math.max(G.unlockLevel, 5);
+    }
+
+    // Arrivals
+    for (let i = G.onOrder.length - 1; i >= 0; i--) {
+      const o = G.onOrder[i];
+      if (G.time < o.arriveAt) continue;
+      const d = G.departments.receiving;
+      const free = d.queueCap - d.queue;
+      if (free <= 0) { o.arriveAt = G.time + 2; G.satisfaction = Math.max(0, G.satisfaction - 0.03 * t); continue; }
+      const take = Math.min(o.qty, free);
+      d.queue += take;
+      o.qty -= take;
+      d.inbound.push({ productId: o.productId, qty: take });
+      AudioSys.dock();
+      log(`Dock received ${take}× ${product(o.productId).name}.`, "good");
+      spawnPackageFlow("dock", "receiving", take);
+      if (o.qty <= 0) G.onOrder.splice(i, 1);
+      else o.arriveAt = G.time + 1.2;
+    }
+
+    // Receiving → stock (progress accumulates across frames)
+    {
+      const d = G.departments.receiving;
+      if (d.progress == null) d.progress = 0;
+      const rate = deptRate("receiving", d.level, 0.5); // ~1–3 units/sec with staff
+      d.progress += rate * t;
+      let guard = 20;
+      while (d.progress >= 1 && d.inbound.length && d.queue > 0 && guard-- > 0) {
+        const item = d.inbound[0];
+        const space = stockCap() - totalInventoryUnits();
+        if (space < 1) { G.satisfaction = Math.max(0, G.satisfaction - 0.08 * t); break; }
+        item.qty -= 1;
+        d.queue = Math.max(0, d.queue - 1);
+        G.inventory[item.productId] = (G.inventory[item.productId] || 0) + 1;
+        d.progress -= 1;
+        if (item.qty <= 0) d.inbound.shift();
+        spawnPackageFlow("receiving", "stock", 1);
+        spawnFloater(deptCenter("receiving").x, deptCenter("receiving").y, "+1", "#3dd68c");
+      }
+      if (!d.inbound.length || d.queue <= 0) d.progress = Math.min(d.progress, 0.95);
+    }
+
+    // Sales — customers buy; MOST cash pays out immediately
+    {
+      const sales = G.departments.sales;
+      if (sales.progress == null) sales.progress = 0;
+      const stockUnits = totalInventoryUnits();
+      const cap = stockCap();
+      const clutter = stockUnits / Math.max(1, cap);
+      // Arrival rate: don't pile up hopeless crowds if you can't sell
+      const sellCap = deptRate("sales", sales.level, 0.55) * (0.7 + G.satisfaction / 200);
+      const baseArrive = Math.min(sellCap * 1.35, 0.55 + G.reputation * 0.01 + sales.level * 0.12)
+        * (0.7 + G.satisfaction / 120);
+      const clutterPenalty = clutter > 0.85 ? (clutter - 0.85) * 2 : 0;
+      sales.customers += Math.max(0.08, baseArrive * (1 - clutterPenalty)) * t;
+      if (clutter > 0.9) {
+        G.satisfaction = Math.max(0, G.satisfaction - 0.25 * t * (clutter - 0.9) * 10);
+        if (Math.random() < 0.002 * t) { log("Aisles jammed — customers grumble.", "warn"); AudioSys.anger(); }
+      }
+
+      let rate = deptRate("sales", sales.level, 0.55) * (0.75 + G.satisfaction / 250);
+      if (G.departments.manager.salesBoost > 0) {
+        rate += 2.2;
+        G.departments.manager.salesBoost = Math.max(0, G.departments.manager.salesBoost - t);
+      }
+      sales.progress += rate * t;
+
+      const avail = unlockedProducts().filter(p => (G.inventory[p.id] || 0) > 0);
+      let guard = 25;
+      while (sales.progress >= 1 && sales.customers >= 1 && avail.length && guard-- > 0) {
+        let totalW = 0;
+        const weights = avail.map(p => { const w = p.demand * (0.5 + Math.random()); totalW += w; return w; });
+        let r = Math.random() * totalW, chosen = avail[0];
+        for (let i = 0; i < avail.length; i++) { r -= weights[i]; if (r <= 0) { chosen = avail[i]; break; } }
+        if ((G.inventory[chosen.id] || 0) <= 0) { avail.splice(avail.indexOf(chosen), 1); continue; }
+
+        G.inventory[chosen.id]--;
+        sales.customers = Math.max(0, sales.customers - 1);
+        sales.progress -= 1;
+
+        // Pay most cash at sale so the player is never "cash starved" with a full store
+        const immediate = Math.floor(chosen.price * 0.75);
+        const remainder = chosen.price - immediate;
+        G.cash += immediate;
+        G.totalRevenue += immediate;
+        revenueWindow.push({ t: G.time, v: immediate });
+        sales.salesToday += chosen.price;
+        G.totalSold++;
+        G.customersServed++;
+        G.flags.sold = true;
+
+        G.pendingShip.push({ productId: chosen.id, qty: 1, value: remainder, fullPrice: chosen.price, age: 0 });
+        G.departments.shipping.backlog++;
+        G.departments.shipping.queue = Math.min(G.departments.shipping.queueCap, G.departments.shipping.queue + 1);
+
+        spawnPackageFlow("stock", "sales", 1);
+        spawnPackageFlow("sales", "shipping", 1);
+        spawnFloater(deptCenter("sales").x, deptCenter("sales").y, fmt$(immediate), "#7dffa8");
+        spawnWalker("customer");
+        if (Math.random() < 0.35) AudioSys.cash();
+
+        if (G.inventory[chosen.id] <= 0) {
+          const idx = avail.indexOf(chosen);
+          if (idx >= 0) avail.splice(idx, 1);
+        }
+      }
+      if (!avail.length || sales.customers < 1) sales.progress = Math.min(sales.progress, 0.95);
+
+      if (sales.customers > 3 && !avail.length) {
+        const lost = Math.min(sales.customers - 2, 0.5 * t);
+        sales.customers -= lost;
+        G.satisfaction = Math.max(0, G.satisfaction - lost * 1.5);
+      }
+      if (sales.customers > sales.queueCap) {
+        const overflow = sales.customers - sales.queueCap;
+        sales.customers = sales.queueCap;
+        G.satisfaction = Math.max(0, G.satisfaction - overflow * 0.35);
+      }
+    }
+
+    // Shipping finishes packages → remaining cash + happiness
+    {
+      const d = G.departments.shipping;
+      if (d.progress == null) d.progress = 0;
+      const rate = deptRate("shipping", d.level, 0.65); // slightly faster than sales so backlog drains
+      d.progress += rate * t;
+      let guard = 25;
+      while (d.progress >= 1 && G.pendingShip.length && guard-- > 0) {
+        const job = G.pendingShip.shift();
+        d.queue = Math.max(0, d.queue - 1);
+        d.backlog = Math.max(0, d.backlog - 1);
+        d.progress -= 1;
+        if (job.value > 0) {
+          G.cash += job.value;
+          G.totalRevenue += job.value;
+          revenueWindow.push({ t: G.time, v: job.value });
+        }
+        G.satisfaction = Math.min(100, G.satisfaction + 0.2);
+        if (Math.random() < 0.4) AudioSys.cash();
+        spawnPackageFlow("shipping", "out", 1);
+        spawnFloater(deptCenter("shipping").x, deptCenter("shipping").y, "📦 " + fmt$(job.fullPrice || job.value), "#4da3ff");
+        spawnSpark(deptCenter("shipping").x, deptCenter("shipping").y, "#4da3ff");
+      }
+      if (!G.pendingShip.length) d.progress = Math.min(d.progress, 0.95);
+
+      for (const job of G.pendingShip) {
+        job.age += t;
+        if (job.age > 30) G.satisfaction = Math.max(0, G.satisfaction - 0.03 * t);
+      }
+      if (G.pendingShip.length > d.queueCap) {
+        G.satisfaction = Math.max(0, G.satisfaction - 0.1 * t);
+        if (Math.random() < 0.003 * t) { log("Shipping bottleneck!", "warn"); AudioSys.anger(); }
+      }
+    }
+
+    // Henry event
+    {
+      const spm = currentSalesPerMin();
+      const mgr = G.departments.manager;
+      const expected = 20 + G.storeTier * 40 + roleSkill("sales") * 30;
+      if (spm < expected * 0.35 && G.time - mgr.lastEvent > 45 && roleSkill("sales") < 3) {
+        mgr.lastEvent = G.time;
+        mgr.salesBoost = 12 + mgr.level * 4;
+        G.henryEvents++;
+        AudioSys.henry();
+        const line = pick([
+          "Henry hits the floor: 'Who wants an IC-7300 demo?'",
+          "Henry: 'Slow day? Bundle FT-891 + antenna!'",
+          "Manager sales event — Henry works the counter!",
+        ]);
+        toast(line, 3800);
+        log(line, "warn");
+        spawnWalker("henry");
+      }
+      if (G.satisfaction > 80 && spm > expected * 0.5) G.satisfaction = Math.min(100, G.satisfaction + 0.02 * t);
+    }
+
+    if (G.satisfaction < 40 && Math.random() < 0.003 * t) {
+      toast("Angry reviews on the repeater net…");
+      G.reputation = Math.max(0, G.reputation - 1);
+    }
+
+    revenueWindow = revenueWindow.filter(r => G.time - r.t < 60);
+    updateVisuals(t);
+  }
+
+  // ── VISUAL ENTITIES ───────────────────────────────────────
+  function spawnFloater(x, y, text, color) {
+    floaters.push({ x: x + rand(-8, 8), y, text, color, life: 1.3, vy: -32 });
+    if (floaters.length > 40) floaters.shift();
+  }
+  function spawnSpark(x, y, color) {
+    for (let i = 0; i < 6; i++) {
+      sparks.push({
+        x, y, vx: rand(-60, 60), vy: rand(-80, -10),
+        life: rand(0.3, 0.7), color,
+      });
+    }
+  }
+  function spawnPackageFlow(from, to, n) {
+    for (let i = 0; i < Math.min(n, 3); i++) {
+      packages.push({
+        from, to, progress: 0,
+        speed: rand(0.35, 0.55),
+        color: pick(["#f0c14b", "#4da3ff", "#3dd68c", "#ff8c5a"]),
+        bob: Math.random() * 6,
+      });
+    }
+    if (packages.length > 80) packages.splice(0, packages.length - 80);
+  }
+  function spawnWalker(kind) {
+    const s = deptRect("sales");
+    walkers.push({
+      kind,
+      x: kind === "henry" ? deptCenter("manager").x : s.x + rand(10, s.w - 10),
+      y: kind === "henry" ? deptCenter("manager").y : s.y + s.h - 4,
+      tx: s.x + rand(20, s.w - 20),
+      ty: s.y + rand(35, s.h - 35),
+      life: kind === "henry" ? 8 : rand(4, 9),
+      hue: kind === "henry" ? 45 : rand(180, 330),
+      phase: Math.random() * 6,
+      r: kind === "henry" ? 7 : 5,
+    });
+    if (walkers.length > 50) walkers.shift();
+  }
+
+  function updateVisuals(dt) {
+    for (const f of floaters) { f.y += f.vy * dt; f.life -= dt; }
+    floaters = floaters.filter(f => f.life > 0);
+    for (const s of sparks) {
+      s.x += s.vx * dt; s.y += s.vy * dt; s.vy += 120 * dt; s.life -= dt;
+    }
+    sparks = sparks.filter(s => s.life > 0);
+    for (const p of packages) p.progress += p.speed * dt;
+    packages = packages.filter(p => p.progress < 1);
+    for (const w of walkers) {
+      w.x += (w.tx - w.x) * Math.min(1, 1.1 * dt);
+      w.y += (w.ty - w.y) * Math.min(1, 1.1 * dt);
+      w.life -= dt; w.phase += dt * 4;
+      if (Math.hypot(w.tx - w.x, w.ty - w.y) < 5) {
+        const s = deptRect("sales");
+        w.tx = s.x + rand(20, s.w - 20);
+        w.ty = s.y + rand(35, s.h - 35);
+      }
+    }
+    walkers = walkers.filter(w => w.life > 0);
+    for (const tr of trucks) { tr.t += dt; tr.pos = Math.min(1, tr.t / 2.5); if (tr.pos >= 1) tr.life -= dt; }
+    trucks = trucks.filter(tr => tr.life > 0);
+
+    // ambient customer traffic when store is open
+    if (gameStarted && !G.paused && Math.random() < 0.015 * G.speed) spawnWalker("customer");
+  }
+
+  // ── CANVAS ────────────────────────────────────────────────
+  const canvas = $("#floor");
+  const ctx = canvas.getContext("2d");
+
+  function resize() {
+    const wrap = $("#floor-wrap");
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    canvas.width = w * dpr; canvas.height = h * dpr;
+    canvas.style.width = w + "px"; canvas.style.height = h + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener("resize", resize);
+
+  function layout() {
+    const tier = STORE_TIERS[G.storeTier];
+    const tw = tier.w, th = tier.h, cell = 20;
+    const ox = 70 + cam.x, oy = 50 + cam.y;
+    const depts = {
+      receiving: { x: 1, y: 1, w: Math.floor(tw * 0.26), h: Math.floor(th * 0.42), color: "#163528", label: "RECEIVING", icon: "📥", glow: "#3dd68c" },
+      stock: { x: 1, y: Math.floor(th * 0.48) + 1, w: Math.floor(tw * 0.26), h: Math.floor(th * 0.42), color: "#15283a", label: "STOCK", icon: "📦", glow: "#4da3ff" },
+      sales: { x: Math.floor(tw * 0.3), y: 1, w: Math.floor(tw * 0.42), h: Math.floor(th * 0.72), color: "#16253a", label: "SALES FLOOR", icon: "🛒", glow: "#b07cff" },
+      shipping: { x: Math.floor(tw * 0.75), y: 1, w: Math.floor(tw * 0.23), h: Math.floor(th * 0.52), color: "#3a2818", label: "SHIPPING", icon: "🚚", glow: "#e0a33a" },
+      manager: { x: Math.floor(tw * 0.75), y: Math.floor(th * 0.58), w: Math.floor(tw * 0.23), h: Math.floor(th * 0.32), color: "#2a1e3a", label: "HENRY", icon: "📻", glow: "#e3b341" },
+    };
+    return { depts, cell, ox, oy, tw, th };
+  }
+  function deptCenter(key) {
+    const L = layout(), d = L.depts[key];
+    return { x: L.ox + (d.x + d.w / 2) * L.cell, y: L.oy + (d.y + d.h / 2) * L.cell };
+  }
+  function deptRect(key) {
+    const L = layout(), d = L.depts[key];
+    return { x: L.ox + d.x * L.cell, y: L.oy + d.y * L.cell, w: d.w * L.cell, h: d.h * L.cell };
+  }
+  function pathPoint(from, to, p) {
+    let A, B;
+    if (from === "dock") {
+      const L = layout();
+      A = { x: L.ox - 20, y: L.oy + 50 };
+      B = deptCenter("receiving");
+    } else if (to === "out") {
+      A = deptCenter("shipping");
+      const L = layout();
+      B = { x: L.ox + L.tw * L.cell + 30, y: deptCenter("shipping").y };
+    } else {
+      A = deptCenter(from); B = deptCenter(to);
+    }
+    // slight curve
+    const mx = (A.x + B.x) / 2 + Math.sin(p * Math.PI) * 18;
+    const my = (A.y + B.y) / 2 - Math.sin(p * Math.PI) * 12;
+    const u = 1 - p;
+    return {
+      x: u * u * A.x + 2 * u * p * mx + p * p * B.x,
+      y: u * u * A.y + 2 * u * p * my + p * p * B.y,
+    };
+  }
+
+  function roundRect(c, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    c.beginPath();
+    c.moveTo(x + rr, y);
+    c.arcTo(x + w, y, x + w, y + h, rr);
+    c.arcTo(x + w, y + h, x, y + h, rr);
+    c.arcTo(x, y + h, x, y, rr);
+    c.arcTo(x, y, x + w, y, rr);
+    c.closePath();
+  }
+
+  function drawPerson(x, y, color, label, bob = 0, r = 6) {
+    ctx.save();
+    ctx.translate(x, y + bob);
+    // shadow
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.beginPath(); ctx.ellipse(0, r + 2, r * 0.9, r * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+    // body
+    ctx.fillStyle = color;
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#0b1220";
+    ctx.font = `bold ${Math.max(8, r)}px sans-serif`;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText(label, 0, 0.5);
+    ctx.restore();
+  }
+
+  function draw() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+
+    // animated background grid
+    ctx.fillStyle = "#0b1220";
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = "rgba(77,163,255,0.04)";
+    ctx.lineWidth = 1;
+    const grid = 28;
+    const off = (animT * 8) % grid;
+    for (let x = -grid + off; x < w; x += grid) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+    }
+    for (let y = -grid + off * 0.5; y < h; y += grid) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    const L = layout();
+    const { depts, cell, ox, oy, tw, th } = L;
+    const floorX = ox, floorY = oy, floorW = tw * cell, floorH = th * cell;
+
+    // outer building
+    ctx.fillStyle = "#101927";
+    roundRect(ctx, floorX - 14, floorY - 14, floorW + 28, floorH + 28, 14);
+    ctx.fill();
+    ctx.strokeStyle = "#2a3648";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // parking / road
+    ctx.fillStyle = "#1a2030";
+    roundRect(ctx, floorX - 70, floorY + 10, 52, floorH * 0.45, 8);
+    ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.setLineDash([6, 8]);
+    ctx.beginPath();
+    ctx.moveTo(floorX - 44, floorY + 20);
+    ctx.lineTo(floorX - 44, floorY + floorH * 0.45);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // building nameplate
+    ctx.fillStyle = "#1a2740";
+    roundRect(ctx, floorX, floorY - 34, Math.min(320, floorW), 24, 6);
+    ctx.fill();
+    ctx.fillStyle = "#7dffa8";
+    ctx.font = "bold 12px Segoe UI, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("🏢 " + STORE_TIERS[G.storeTier].name + "  ·  flow →", floorX + 8, floorY - 18);
+
+    // conveyor belts under depts
+    drawBelts(L);
+
+    // departments
+    for (const key of DEPT_KEYS) {
+      const d = depts[key];
+      const x = ox + d.x * cell, y = oy + d.y * cell, dw = d.w * cell, dh = d.h * cell;
+      const selected = G.selectedDept === key;
+      const pulse = 0.5 + 0.5 * Math.sin(animT * 3 + key.length);
+
+      // floor tile pattern
+      ctx.fillStyle = d.color;
+      roundRect(ctx, x, y, dw, dh, 10);
+      ctx.fill();
+
+      // bottleneck flash
+      const heat = deptHeat(key);
+      if (heat > 0.75) {
+        ctx.fillStyle = `rgba(255,93,87,${0.08 + 0.1 * pulse * (heat - 0.75)})`;
+        roundRect(ctx, x, y, dw, dh, 10);
+        ctx.fill();
+      }
+
+      ctx.strokeStyle = selected ? d.glow : "#2a3648";
+      ctx.lineWidth = selected ? 3 : 1.5;
+      if (selected) {
+        ctx.shadowColor = d.glow;
+        ctx.shadowBlur = 12;
+      }
+      roundRect(ctx, x, y, dw, dh, 10);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      // header strip
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      roundRect(ctx, x, y, dw, 28, 10);
+      ctx.fill();
+      ctx.fillStyle = "#e8eef7";
+      ctx.font = "bold 11px Segoe UI, sans-serif";
+      ctx.fillText(`${d.icon} ${d.label}`, x + 8, y + 18);
+      ctx.fillStyle = "#8b9bb0";
+      ctx.font = "10px Segoe UI, sans-serif";
+      ctx.fillText("Lv " + G.departments[key].level, x + dw - 36, y + 18);
+
+      drawDeptInterior(key, x, y, dw, dh);
+    }
+
+    // trucks
+    for (const tr of trucks) {
+      const p = pathPoint("dock", "receiving", tr.pos * 0.5);
+      drawTruck(p.x - 40 + tr.pos * 50, deptCenter("receiving").y - 10 + Math.sin(animT * 6) * 1);
+    }
+    // idle truck at dock
+    drawTruck(ox - 48, oy + 40 + Math.sin(animT * 2) * 1.5);
+
+    // moving packages
+    for (const p of packages) {
+      const pt = pathPoint(p.from, p.to, clamp(p.progress, 0, 1));
+      const bob = Math.sin(animT * 8 + p.bob) * 2;
+      ctx.fillStyle = p.color;
+      roundRect(ctx, pt.x - 6, pt.y - 5 + bob, 12, 10, 2);
+      ctx.fill();
+      ctx.fillStyle = "rgba(0,0,0,0.2)";
+      ctx.fillRect(pt.x - 6, pt.y - 1 + bob, 12, 2);
+    }
+
+    // staff
+    drawStaffAnimated(L);
+
+    // walkers / customers
+    for (const w of walkers) {
+      const bob = Math.sin(w.phase) * 2;
+      const col = w.kind === "henry" ? "#e3b341" : `hsl(${w.hue},55%,62%)`;
+      drawPerson(w.x, w.y, col, w.kind === "henry" ? "H" : "c", bob, w.r);
+    }
+
+    // sparks & floaters
+    for (const s of sparks) {
+      ctx.globalAlpha = clamp(s.life * 2, 0, 1);
+      ctx.fillStyle = s.color;
+      ctx.fillRect(s.x, s.y, 3, 3);
+      ctx.globalAlpha = 1;
+    }
+    for (const f of floaters) {
+      ctx.globalAlpha = clamp(f.life, 0, 1);
+      ctx.fillStyle = f.color;
+      ctx.font = "bold 12px Segoe UI, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(f.text, f.x, f.y);
+      ctx.globalAlpha = 1;
+    }
+
+    // roof antenna
+    const ax = ox + floorW * 0.55, ay = oy - 6;
+    ctx.strokeStyle = "#5a6a80";
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(ax, ay - 44); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax - 20, ay - 18); ctx.lineTo(ax + 20, ay - 28); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax - 16, ay - 30); ctx.lineTo(ax + 16, ay - 38); ctx.stroke();
+    if (Math.sin(animT * 5) > 0) {
+      ctx.fillStyle = "#3dd68c";
+      ctx.beginPath(); ctx.arc(ax, ay - 44, 3, 0, Math.PI * 2); ctx.fill();
+      // radio wave rings
+      ctx.strokeStyle = `rgba(61,214,140,${0.25 + 0.2 * Math.sin(animT * 4)})`;
+      ctx.beginPath(); ctx.arc(ax, ay - 44, 8 + (animT * 20) % 16, 0, Math.PI * 2); ctx.stroke();
+    }
+
+    // legend
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(18,26,39,0.85)";
+    roundRect(ctx, 10, h - 54, 210, 44, 8);
+    ctx.fill();
+    ctx.fillStyle = "#8b9bb0";
+    ctx.font = "10px Segoe UI, sans-serif";
+    ctx.fillText("Drag to pan · Click a room", 18, h - 34);
+    ctx.fillText("Red flash = bottleneck", 18, h - 18);
+  }
+
+  function deptHeat(key) {
+    const d = G.departments[key];
+    if (key === "receiving") return d.queue / Math.max(1, d.queueCap);
+    if (key === "stock") return totalInventoryUnits() / Math.max(1, stockCap());
+    if (key === "sales") return d.customers / Math.max(1, d.queueCap);
+    if (key === "shipping") return G.pendingShip.length / Math.max(1, d.queueCap);
+    if (key === "manager") return G.departments.manager.salesBoost > 0 ? 1 : 1 - G.satisfaction / 100;
+    return 0;
+  }
+
+  function drawBelts(L) {
+    const pairs = [["receiving", "stock"], ["stock", "sales"], ["sales", "shipping"]];
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = "#1a2230";
+    ctx.lineCap = "round";
+    for (const [a, b] of pairs) {
+      const A = deptCenter(a), B = deptCenter(b);
+      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+    }
+    // moving dashes
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(77,163,255,0.45)";
+    ctx.setLineDash([8, 10]);
+    ctx.lineDashOffset = -animT * 30;
+    for (const [a, b] of pairs) {
+      const A = deptCenter(a), B = deptCenter(b);
+      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    // arrow labels
+    ctx.fillStyle = "rgba(139,155,176,0.7)";
+    ctx.font = "9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("process", (deptCenter("receiving").x + deptCenter("stock").x) / 2, (deptCenter("receiving").y + deptCenter("stock").y) / 2 - 8);
+    ctx.fillText("pick", (deptCenter("stock").x + deptCenter("sales").x) / 2, (deptCenter("stock").y + deptCenter("sales").y) / 2 - 8);
+    ctx.fillText("pack", (deptCenter("sales").x + deptCenter("shipping").x) / 2, (deptCenter("sales").y + deptCenter("shipping").y) / 2 - 8);
+  }
+
+  function drawDeptInterior(key, x, y, dw, dh) {
+    const d = G.departments[key];
+    const barY = y + dh - 26;
+    const barW = dw - 16;
+    const heat = deptHeat(key);
+    let label = "", color = "#4da3ff";
+
+    if (key === "receiving") {
+      label = `Queue ${d.queue | 0}/${d.queueCap}`;
+      color = heat > 0.85 ? "#ff5d57" : "#3dd68c";
+      // pallets
+      const n = Math.min(8, d.queue | 0);
+      for (let i = 0; i < n; i++) {
+        const px = x + 12 + (i % 4) * 22;
+        const py = y + 42 + Math.floor(i / 4) * 18 + Math.sin(animT * 3 + i) * 1;
+        ctx.fillStyle = "#8b6914";
+        roundRect(ctx, px, py, 16, 12, 2); ctx.fill();
+        ctx.fillStyle = "#f0c14b";
+        roundRect(ctx, px + 2, py + 2, 12, 8, 1); ctx.fill();
+      }
+    } else if (key === "stock") {
+      const u = totalInventoryUnits(), c = stockCap();
+      label = `Inv ${u}/${c}`;
+      color = heat > 0.9 ? "#ff5d57" : heat > 0.7 ? "#e0a33a" : "#4da3ff";
+      const shelves = Math.min(12, Math.ceil(u / 3));
+      for (let i = 0; i < shelves; i++) {
+        const sx = x + 10 + (i % 3) * (dw / 3.3);
+        const sy = y + 40 + Math.floor(i / 3) * 16;
+        ctx.fillStyle = "rgba(77,163,255,0.2)";
+        ctx.fillRect(sx, sy, dw / 4, 10);
+        ctx.fillStyle = pickSoft(i);
+        ctx.fillRect(sx + 2, sy + 2, 6, 6);
+      }
+    } else if (key === "sales") {
+      label = `Cust ${d.customers.toFixed(0)} · ${fmt$(d.salesToday)}`;
+      color = heat > 0.85 ? "#ff5d57" : "#b07cff";
+      // counters
+      for (let i = 0; i < 3; i++) {
+        const sx = x + 14 + i * (dw / 3.3);
+        ctx.fillStyle = "rgba(176,124,255,0.18)";
+        roundRect(ctx, sx, y + 40, dw / 4.2, dh - 85, 4); ctx.fill();
+        // radio on counter
+        ctx.fillStyle = "#2a3648";
+        roundRect(ctx, sx + 8, y + 50, 22, 12, 2); ctx.fill();
+        ctx.fillStyle = Math.sin(animT * 4 + i) > 0 ? "#3dd68c" : "#1f8f4e";
+        ctx.fillRect(sx + 12, y + 53, 4, 4);
+      }
+    } else if (key === "shipping") {
+      label = `Ship ${G.pendingShip.length}`;
+      color = heat > 0.85 ? "#ff5d57" : "#e0a33a";
+      const n = Math.min(10, G.pendingShip.length);
+      for (let i = 0; i < n; i++) {
+        const px = x + 10 + (i % 3) * 20;
+        const py = y + 42 + Math.floor(i / 3) * 16 + Math.sin(animT * 5 + i) * 1;
+        ctx.fillStyle = "#c4a35a";
+        roundRect(ctx, px, py, 14, 11, 2); ctx.fill();
+        ctx.strokeStyle = "#8b6914";
+        ctx.strokeRect(px + 1, py + 1, 12, 9);
+      }
+    } else {
+      label = G.departments.manager.salesBoost > 0 ? "ON FLOOR!" : `Happy ${G.satisfaction | 0}%`;
+      color = G.departments.manager.salesBoost > 0 ? "#e3b341" : "#b07cff";
+      // desk + radio
+      ctx.fillStyle = "rgba(227,179,65,0.15)";
+      roundRect(ctx, x + 12, y + 40, dw - 24, 40, 4); ctx.fill();
+      ctx.fillStyle = "#3a2a10";
+      roundRect(ctx, x + dw / 2 - 14, y + 48, 28, 16, 3); ctx.fill();
+      if (Math.sin(animT * 6) > 0) {
+        ctx.fillStyle = "#3dd68c";
+        ctx.beginPath(); ctx.arc(x + dw / 2 + 8, y + 52, 2, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = "#0b1220";
+    roundRect(ctx, x + 8, barY, barW, 9, 4); ctx.fill();
+    ctx.fillStyle = color;
+    roundRect(ctx, x + 8, barY, Math.max(2, barW * clamp(heat, 0, 1)), 9, 4); ctx.fill();
+    ctx.fillStyle = "#8b9bb0";
+    ctx.font = "9px Segoe UI, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(label, x + 8, barY - 5);
+  }
+
+  function pickSoft(i) {
+    return ["#4da3ff", "#3dd68c", "#e0a33a", "#b07cff", "#ff8c5a"][i % 5];
+  }
+
+  function drawTruck(x, y) {
+    ctx.fillStyle = "#3a4558";
+    roundRect(ctx, x, y, 36, 18, 3); ctx.fill();
+    ctx.fillStyle = "#2a3344";
+    roundRect(ctx, x + 24, y + 2, 12, 14, 2); ctx.fill();
+    ctx.fillStyle = "#1a2030";
+    ctx.beginPath(); ctx.arc(x + 8, y + 18, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(x + 28, y + 18, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#4da3ff";
+    ctx.fillRect(x + 26, y + 5, 6, 4);
+  }
+
+  function drawStaffAnimated(L) {
+    const roles = [
+      { role: "receiving", key: "receiving", color: "#3dd68c" },
+      { role: "sales", key: "sales", color: "#4da3ff" },
+      { role: "shipping", key: "shipping", color: "#e0a33a" },
+      { role: "manager", key: "manager", color: "#e3b341" },
+    ];
+    for (const r of roles) {
+      const list = G.staff[r.role] || [];
+      const rect = deptRect(r.key);
+      list.forEach((s, i) => {
+        const busy = deptHeat(r.key) > 0.2;
+        const angle = animT * (busy ? 2.2 : 0.8) + i * 1.7;
+        const px = rect.x + 18 + (i % 3) * 16 + Math.cos(angle) * (busy ? 6 : 2);
+        const py = rect.y + 55 + Math.floor(i / 3) * 16 + Math.sin(angle * 2) * (busy ? 3 : 1);
+        // only draw if Henry not on floor boost for manager (he walks then)
+        if (r.role === "manager" && G.departments.manager.salesBoost > 0) return;
+        drawPerson(px, py, r.color, s.name[0], Math.sin(animT * 5 + i) * 1.5, 6);
+      });
+    }
+  }
+
+  // ── INTERACTION ───────────────────────────────────────────
+  canvas.addEventListener("pointerdown", (e) => {
+    cam.dragging = true; cam.moved = false;
+    cam.lx = e.clientX; cam.ly = e.clientY;
+    canvas.classList.add("dragging");
+    canvas.setPointerCapture?.(e.pointerId);
+  });
+  canvas.addEventListener("pointermove", (e) => {
+    if (!cam.dragging) return;
+    const dx = e.clientX - cam.lx, dy = e.clientY - cam.ly;
+    if (Math.abs(dx) + Math.abs(dy) > 3) cam.moved = true;
+    cam.x += dx; cam.y += dy;
+    cam.lx = e.clientX; cam.ly = e.clientY;
+  });
+  canvas.addEventListener("pointerup", (e) => {
+    canvas.classList.remove("dragging");
+    if (cam.dragging && !cam.moved) {
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+      for (const key of DEPT_KEYS) {
+        const r = deptRect(key);
+        if (mx >= r.x && mx <= r.x + r.w && my >= r.y && my <= r.y + r.h) {
+          G.selectedDept = key;
+          setTab("play");
+          AudioSys.click();
+          markPanelDirty();
+          renderPanels(true);
+          toast(key.toUpperCase() + " selected — details in Play tab");
+          break;
+        }
+      }
+    }
+    cam.dragging = false;
+  });
+
+  // ── UI ────────────────────────────────────────────────────
+  function setTab(name) {
+    activeTab = name;
+    document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+    const panel = $("#tab-" + name);
+    if (panel) panel.classList.add("active");
+    markPanelDirty();
+  }
+
+  document.querySelectorAll(".tabs button").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      AudioSys.click();
+      setTab(btn.dataset.tab);
+      renderPanels(true);
+    });
+  });
+
+  function updateStats() {
+    $("#st-cash").textContent = fmt$(G.cash);
+    const pend = pendingCash();
+    const pendEl = $("#st-pending");
+    if (pendEl) pendEl.textContent = fmt$(pend);
+    $("#st-day").textContent = String(G.day);
+    const happy = Math.round(G.satisfaction);
+    $("#st-happy").textContent = happy + "%";
+    const hw = $("#st-happy-wrap");
+    hw.classList.toggle("warn", happy < 60);
+    hw.classList.toggle("danger", happy < 35);
+    $("#st-spm").textContent = fmt$(currentSalesPerMin());
+    $("#st-sold").textContent = String(G.totalSold);
+    $("#st-size").textContent = STORE_TIERS[G.storeTier].name;
+    $("#footer-status").textContent =
+      `${!gameStarted ? "Waiting to start" : G.paused ? "Paused" : G.speed + "x"} · Inv ${totalInventoryUnits()}/${stockCap()} · Staff ${staffCount()}/${STORE_TIERS[G.storeTier].maxStaff} · 73`;
+
+    // pipeline hud
+    const setPipe = (id, val, max) => {
+      const pct = clamp(val / Math.max(1, max) * 100, 0, 100);
+      const el = $("#p-" + id), v = $("#v-" + id);
+      if (el) el.style.width = pct + "%";
+      if (v) v.textContent = String(Math.round(val));
+      if (el) {
+        el.style.background = pct > 85 ? "#ff5d57" : pct > 65 ? "#e0a33a" : (id === "dock" ? "#3dd68c" : id === "cust" ? "#b07cff" : "#4da3ff");
+      }
+    };
+    setPipe("transit", G.onOrder.reduce((a, o) => a + o.qty, 0), 20);
+    setPipe("dock", G.departments.receiving.queue, G.departments.receiving.queueCap);
+    setPipe("stock", totalInventoryUnits(), stockCap());
+    setPipe("cust", G.departments.sales.customers, G.departments.sales.queueCap);
+    setPipe("ship", G.pendingShip.length, G.departments.shipping.queueCap);
+  }
+
+  function meter(label, val, max, color) {
+    const pct = clamp(val / Math.max(1, max) * 100, 0, 100);
+    const shown = (typeof val === "number" && val % 1) ? val.toFixed(1) : (val | 0);
+    return `<div style="margin-top:6px"><div class="meta"><span>${label}</span><span>${shown} / ${max | 0}</span></div>
+      <div class="bar ${color}"><i style="width:${pct}%"></i></div></div>`;
+  }
+
+  function renderPanels(force = false) {
+    if (!force && !panelDirty) {
+      if (logDirty && activeTab === "log") renderLog();
+      return;
+    }
+    panelDirty = false;
+    lastPanelBuild = performance.now();
+    if (activeTab === "play") renderPlay();
+    else if (activeTab === "staff") renderStaff();
+    else if (activeTab === "catalog") renderCatalog();
+    else if (activeTab === "orders") renderOrders();
+    else if (activeTab === "expand") renderExpand();
+    else if (activeTab === "log") renderLog();
+  }
+
+  function renderPlay() {
+    const el = $("#tab-play");
+    const key = G.selectedDept;
+    const names = {
+      receiving: "Receiving Dock", stock: "Stockroom", sales: "Sales Floor",
+      shipping: "Shipping Bay", manager: "Henry's Office",
+    };
+    const tips = {
+      receiving: "Trucks unload here. Hire Stephany so pallets move into stock.",
+      stock: "Shelf capacity. Over 85% full = angry customers. Expand when full.",
+      sales: "Customers buy here. Hire/train sales. Empty shelves lose sales.",
+      shipping: "Packages become cash only after shipping. Hire Dave.",
+      manager: "Henry boosts sales when the store is slow.",
+    };
+    const d = G.departments[key];
+    let meters = "";
+    if (key === "receiving") {
+      meters = meter("Dock queue", d.queue, d.queueCap, d.queue / d.queueCap > 0.85 ? "red" : "green");
+      meters += `<p>Skill <b>${roleSkill("receiving").toFixed(2)}</b> · Staff ${G.staff.receiving.length}</p>`;
+    } else if (key === "stock") {
+      const u = totalInventoryUnits(), c = stockCap();
+      meters = meter("Capacity", u, c, u / c > 0.9 ? "red" : u / c > 0.7 ? "orange" : "blue");
+    } else if (key === "sales") {
+      meters = meter("Customers waiting", d.customers, d.queueCap, d.customers / d.queueCap > 0.85 ? "red" : "purple");
+      meters += `<p>Skill <b>${roleSkill("sales").toFixed(2)}</b> · Today <span class="price">${fmt$(d.salesToday)}</span></p>`;
+    } else if (key === "shipping") {
+      meters = meter("Packages waiting", G.pendingShip.length, d.queueCap, G.pendingShip.length / d.queueCap > 0.85 ? "red" : "orange");
+      meters += `<p>Skill <b>${roleSkill("shipping").toFixed(2)}</b></p>`;
+    } else {
+      meters = meter("Satisfaction", G.satisfaction, 100, G.satisfaction < 40 ? "red" : G.satisfaction < 70 ? "orange" : "green");
+      meters += meter("Reputation", G.reputation, 100, "purple");
+    }
+    const up = deptUpgradeCost(key);
+    const m = getMission();
+    el.innerHTML = `
+      <div class="section-title">How money is made</div>
+      <div class="card">
+        <div class="flow-diagram" style="margin:0">
+          <span>Order</span><span class="arrow">→</span>
+          <span>Dock</span><span class="arrow">→</span>
+          <span>Stock</span><span class="arrow">→</span>
+          <span>Sell</span><span class="arrow">→</span>
+          <span>Ship</span><span class="arrow">→</span>
+          <span class="price">Cash</span>
+        </div>
+        <p style="margin-top:8px"><b>75% of each sale hits Cash right away</b>; the rest clears when packages ship (see Outgoing). Red bars = bottleneck.</p>
+      </div>
+      <div class="section-title">Suggested now</div>
+      <div class="card">
+        <h3>${m.goal}</h3>
+        <p>${m.why}</p>
+        <div class="row"><button type="button" class="primary glow" data-act="mission">${m.cta}</button></div>
+      </div>
+      <div class="section-title">Selected room</div>
+      <div class="card">
+        <h3>${names[key]} <span class="chip">Lv ${d.level}</span></h3>
+        <p>${tips[key]}</p>
+        ${meters}
+        <div class="row">
+          <button type="button" class="primary small" data-act="upgrade-dept" data-dept="${key}" ${up == null ? "disabled" : ""}>
+            Upgrade ${up != null ? fmt$(up) : "(MAX)"}
+          </button>
+          <button type="button" class="small" data-act="tab" data-tab="staff">Staff</button>
+          <button type="button" class="small" data-act="tab" data-tab="catalog">Buy stock</button>
+        </div>
+      </div>
+      <div class="section-title">Top stock on hand</div>
+      ${unlockedProducts().map(p => ({ p, q: G.inventory[p.id] || 0 })).sort((a, b) => b.q - a.q).slice(0, 6).map(({ p, q }) =>
+        `<div class="prod-row"><div><div class="name">${p.name}</div><div class="sub">${q} in stock · sell ${fmt$(p.price)}</div></div>
+         <div class="acts"><button type="button" class="small" data-act="order" data-id="${p.id}" data-qty="3">+3</button></div></div>`
+      ).join("")}
+    `;
+  }
+
+  function renderStaff() {
+    const el = $("#tab-staff");
+    let html = `<div class="section-title">Team (${staffCount()}/${STORE_TIERS[G.storeTier].maxStaff})</div>
+      <div class="card"><p>Daily wages <span class="cost">${fmt$(wagesPerDay())}</span> · Hire ≈ 3× daily wage. You already start with Stephany, Peter, and Dave — hire more to scale.</p></div>`;
+
+    // recommended hires first
+    html += `<div class="section-title">Core team</div>`;
+    const recs = [
+      { role: "receiving", id: "stephany" },
+      { role: "sales", id: "peter" },
+      { role: "shipping", id: "dave" },
+    ];
+    for (const r of recs) {
+      const p = STAFF_POOL[r.role].find(x => x.id === r.id);
+      const hired = G.staff[r.role].some(s => s.id === r.id);
+      const cost = p.wage * 3;
+      html += `<div class="card ${hired ? "" : ""}">
+        <h3>${p.name} · ${r.role} ${hired ? '<span class="chip good">Hired</span>' : '<span class="chip warn">Needed</span>'}</h3>
+        <p>${p.blurb} · skill ${p.skill} · ${fmt$(cost)} hire</p>
+        <div class="row"><button type="button" class="primary small ${hired ? "" : "glow"}" data-act="hire" data-role="${r.role}" data-id="${p.id}" ${hired ? "disabled" : ""}>${hired ? "On team" : "Hire " + p.name}</button></div>
+      </div>`;
+    }
+
+    for (const role of ["manager", "receiving", "sales", "shipping"]) {
+      html += `<div class="section-title">${role}</div>`;
+      for (const s of G.staff[role]) {
+        const trainCost = Math.floor(80 * s.train * (role === "sales" ? 1.2 : 1));
+        html += `<div class="card">
+          <h3><span class="person"><span class="staff-avatar" style="background:${roleColor(role)}">${s.name[0]}</span>${s.name}</span>
+            <span class="chip good">×${s.train.toFixed(2)}</span></h3>
+          <p>Effective skill ${(s.skill * s.train).toFixed(2)} · ${fmt$(s.wage)}/day</p>
+          <div class="row">
+            ${role !== "manager"
+              ? `<button type="button" class="small" data-act="train" data-role="${role}" data-id="${s.id}">Train (${fmt$(trainCost)})</button>
+                 <button type="button" class="small danger" data-act="fire" data-role="${role}" data-id="${s.id}">Let go</button>`
+              : `<span class="chip">Always on duty</span>`}
+          </div>
+        </div>`;
+      }
+      if (role !== "manager") {
+        for (const p of STAFF_POOL[role]) {
+          if (G.staff[role].some(s => s.id === p.id)) continue;
+          if (["stephany", "peter", "dave"].includes(p.id)) continue;
+          const cost = p.wage * 3;
+          html += `<div class="prod-row">
+            <div><div class="name">${p.name}</div><div class="sub">${p.blurb} · ${fmt$(cost)}</div></div>
+            <div class="acts"><button type="button" class="small primary" data-act="hire" data-role="${role}" data-id="${p.id}">Hire</button></div>
+          </div>`;
+        }
+      }
+    }
+    el.innerHTML = html;
+  }
+
+  function roleColor(role) {
+    return { sales: "#4da3ff", receiving: "#3dd68c", shipping: "#e0a33a", manager: "#e3b341" }[role] || "#8b9bb0";
+  }
+
+  function renderCatalog() {
+    const el = $("#tab-catalog");
+    const showLocked = false;
+    let html = `<div class="section-title">Buy stock (unlock L${G.unlockLevel})</div>
+      <div class="card">
+        <p>Order gear from manufacturers. Trucks arrive at the dock, then staff process into stock. <b>Don't fill past ~85% capacity.</b></p>
+        <div class="row">
+          <button type="button" class="primary small glow" data-act="restock">Quick restock low SKUs</button>
+        </div>
+      </div>
+      <div class="section-title">Suppliers</div>
+      <div class="supplier-wrap">`;
+    for (const s of SUPPLIERS) {
+      html += `<span class="chip" style="border-color:${s.color};color:${s.color}">${s.name}</span>`;
+    }
+    html += `</div>`;
+
+    const cats = [...new Set(PRODUCTS.map(p => p.cat))];
+    for (const cat of cats) {
+      const items = PRODUCTS.filter(x => x.cat === cat && (showLocked || x.unlock <= G.unlockLevel));
+      if (!items.length) continue;
+      html += `<div class="section-title">${cat}</div>`;
+      for (const p of items) {
+        const q = G.inventory[p.id] || 0;
+        const sup = supplier(p.brand);
+        html += `<div class="prod-row">
+          <div>
+            <div class="name">${p.name}</div>
+            <div class="sub">${sup?.name || p.brand} · cost <span class="cost">${fmt$(p.cost)}</span> · sell <span class="price">${fmt$(p.price)}</span> · stock ${q}</div>
+          </div>
+          <div class="acts">
+            <button type="button" class="small" data-act="order" data-id="${p.id}" data-qty="1">1</button>
+            <button type="button" class="small" data-act="order" data-id="${p.id}" data-qty="3">3</button>
+            <button type="button" class="small primary" data-act="order" data-id="${p.id}" data-qty="5">5</button>
+          </div>
+        </div>`;
+      }
+    }
+    // locked teaser
+    const locked = PRODUCTS.filter(p => p.unlock > G.unlockLevel).slice(0, 4);
+    if (locked.length) {
+      html += `<div class="section-title">Locked (grow revenue)</div>`;
+      for (const p of locked) {
+        html += `<div class="prod-row locked"><div><div class="name">${p.name}</div><div class="sub">Unlock L${p.unlock} · ${fmt$(p.price)}</div></div><div class="chip bad">Locked</div></div>`;
+      }
+    }
+    el.innerHTML = html;
+  }
+
+  function renderOrders() {
+    const el = $("#tab-orders");
+    let html = `<div class="section-title">Incoming trucks (${G.onOrder.length})</div>
+      <div class="card"><p>Watch packages animate from the dock into the store. Full dock = trucks wait.</p>
+      <div class="row"><button type="button" class="primary small" data-act="restock">Order popular low stock</button>
+      <button type="button" class="small" data-act="tab" data-tab="catalog">Full catalog</button></div></div>`;
+    if (!G.onOrder.length) html += `<div class="card"><p>No trucks en route. Use <b>Buy stock</b> or Quick restock.</p></div>`;
+    for (const o of G.onOrder) {
+      const p = product(o.productId);
+      const eta = Math.max(0, o.arriveAt - G.time);
+      const prog = clamp(1 - eta / Math.max(1, (o.arriveAt - (G.time - eta))), 0, 1);
+      html += `<div class="card">
+        <h3>${o.qty}× ${p.name}</h3>
+        <p>${supplier(o.supplier)?.name || o.supplier} · ETA ${eta.toFixed(0)}s · paid ${fmt$(o.cost)}</p>
+        ${meter("En route", prog * 100, 100, "green")}
+      </div>`;
+    }
+    html += `<div class="section-title">Suppliers (scroll inside box)</div>
+      <div class="supplier-wrap" style="max-height:120px">`;
+    for (const s of SUPPLIERS) {
+      html += `<span class="chip" style="border-color:${s.color};color:${s.color}" title="Lead ~${s.lead}s · rel ${(s.reliability * 100) | 0}%">${s.name}</span>`;
+    }
+    html += `</div>`;
+    el.innerHTML = html;
+  }
+
+  function renderExpand() {
+    const el = $("#tab-expand");
+    const cur = STORE_TIERS[G.storeTier];
+    const next = STORE_TIERS[G.storeTier + 1];
+    let html = `<div class="section-title">Building</div>
+      <div class="card">
+        <h3>${cur.name}</h3>
+        <p>Stock capacity ×${cur.capMult} · Max staff ${cur.maxStaff}</p>
+        ${next
+          ? `<p>Next: <b>${next.name}</b> — ${fmt$(next.cost)}</p>
+             <div class="row"><button type="button" class="primary ${G.cash >= next.cost ? "glow" : ""}" data-act="expand" ${G.cash < next.cost ? "disabled" : ""}>Expand (${fmt$(next.cost)})</button></div>`
+          : `<p class="chip good">Flagship complete!</p>`}
+      </div>
+      <div class="section-title">Upgrade rooms</div>`;
+    for (const key of DEPT_KEYS) {
+      const c = deptUpgradeCost(key);
+      html += `<div class="prod-row">
+        <div><div class="name">${key}</div><div class="sub">Level ${G.departments[key].level}</div></div>
+        <div class="acts">
+          <button type="button" class="small" data-act="upgrade-dept" data-dept="${key}" ${c == null || G.cash < c ? "disabled" : ""}>
+            ${c == null ? "MAX" : fmt$(c)}
+          </button>
+        </div>
+      </div>`;
+    }
+    html += `<div class="section-title">Stats</div>
+      <div class="card">
+        <p>Revenue ${fmt$(G.totalRevenue)} · Sold ${G.totalSold} · Customers ${G.customersServed}</p>
+        <p>Henry events ${G.henryEvents} · Catalog unlock L${G.unlockLevel}</p>
+      </div>`;
+    el.innerHTML = html;
+  }
+
+  function renderLog() {
+    logDirty = false;
+    $("#log").innerHTML = G.log.map(l =>
+      `<div class="line"><span class="t">${l.t}</span><span class="${l.cls}">${l.msg}</span></div>`
+    ).join("") || "<div class='line'>No events yet.</div>";
+  }
+
+  function handlePanelAction(btn) {
+    if (!btn?.dataset?.act || btn.disabled) return;
+    const act = btn.dataset.act;
+    if (act === "upgrade-dept") upgradeDept(btn.dataset.dept);
+    else if (act === "hire") hireStaff(btn.dataset.role, btn.dataset.id);
+    else if (act === "train") trainStaff(btn.dataset.role, btn.dataset.id);
+    else if (act === "fire") fireStaff(btn.dataset.role, btn.dataset.id);
+    else if (act === "order") orderProduct(btn.dataset.id, +btn.dataset.qty);
+    else if (act === "expand") expandStore();
+    else if (act === "tab") setTab(btn.dataset.tab);
+    else if (act === "restock") autoRestock();
+    else if (act === "mission") {
+      const m = getMission();
+      if (m.action) m.action();
+    }
+    else if (act === "cw") { AudioSys.cw("73"); toast("CQ de Superstore — 73"); }
+    markPanelDirty();
+    renderPanels(true);
+    updateStats();
+    updateMissionUI();
+  }
+
+  document.querySelector("aside").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-act], [data-act]");
+    if (!btn || !btn.dataset.act) return;
+    e.preventDefault();
+    handlePanelAction(btn);
+  });
+
+  $("#btn-mission-cta").addEventListener("click", (e) => {
+    e.preventDefault();
+    const m = getMission();
+    if (m.action) m.action();
+    markPanelDirty();
+    renderPanels(true);
+    updateMissionUI();
+  });
+
+  // ── MODAL / CONTROLS ───────────────────────────────────────
+  const WELCOME_HTML = `
+    <h2>Ham Radio Superstore</h2>
+    <p><b>Goal:</b> grow a tiny ham radio shop into a massive superstore.</p>
+    <div class="flow-diagram">
+      <span>Stock shelves</span><span class="arrow">→</span>
+      <span>Customers buy</span><span class="arrow">→</span>
+      <span class="price">Cash (75%)</span><span class="arrow">→</span>
+      <span>Ship rest</span>
+    </div>
+    <ol>
+      <li>You start with <b>Stephany, Peter, Dave</b> and <b>$8,000</b> — sales already earn cash.</li>
+      <li><b>Quick restock</b> when shelves run low (keep under ~85% full).</li>
+      <li>Hire more staff and upgrade rooms when lines turn red.</li>
+      <li><b>Outgoing</b> in the header is the small remainder waiting on packages — not a black hole.</li>
+    </ol>
+    <p>Manager <b>Henry</b> helps when sales slow down. Use the glowing <b>Next action</b> if stuck.</p>
+    <div class="row" style="margin-top:12px">
+      <button type="button" class="primary" id="btn-start">Start Selling · 73!</button>
+      <button type="button" id="btn-load">Load Save</button>
+    </div>`;
+
+  const HELP_HTML = `
+    <h2>Quick help</h2>
+    <ol>
+      <li><b>Play tab</b> — what to do + selected room.</li>
+      <li><b>Staff</b> — hire/train. Throughput = staff skill.</li>
+      <li><b>Buy stock</b> — order from ICOM, Yaesu, Kenwood, Elecraft, Flex…</li>
+      <li><b>Trucks</b> — incoming POs only (suppliers list scrolls in its own box).</li>
+      <li><b>Grow</b> — expand building & upgrade rooms.</li>
+    </ol>
+    <p>Cash arrives only after shipping. Bottlenecks (full dock, full stock, ship backlog) drop happiness.</p>
+    <div class="row"><button type="button" class="primary" id="btn-close-help">Close</button></div>`;
+
+  function showModal(html) { $("#modal").innerHTML = html; $("#modal-bg").classList.add("show"); }
+  function hideModal() { $("#modal-bg").classList.remove("show"); }
+
+  function startGame() {
+    gameStarted = true;
+    hideModal();
+    try { AudioSys.resume(); AudioSys.setEnabled(true); AudioSys.startAmbient(); AudioSys.cw("73"); } catch (_) {}
+    log("Doors open. Stephany, Peter, and Dave are on duty — sales pay cash immediately!", "good");
+    toast("Store open! Cash grows as customers buy. Restock when shelves run low.");
+    // seed ambient walkers
+    for (let i = 0; i < 4; i++) spawnWalker("customer");
+    markPanelDirty();
+    renderPanels(true);
+    updateStats();
+    updateMissionUI();
+  }
+
+  $("#modal-bg").addEventListener("click", (e) => {
+    if (e.target.id === "modal-bg") { if (gameStarted) hideModal(); return; }
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    if (btn.id === "btn-start") startGame();
+    else if (btn.id === "btn-load") {
+      if (loadGame()) {
+        gameStarted = true; hideModal();
+        try { AudioSys.resume(); AudioSys.setEnabled(true); AudioSys.startAmbient(); } catch (_) {}
+        markPanelDirty(); renderPanels(true); updateStats(); updateMissionUI();
+      }
+    } else if (btn.id === "btn-close-help") hideModal();
+  });
+
+  $("#btn-sound").addEventListener("click", () => {
+    try {
+      AudioSys.resume();
+      AudioSys.setEnabled(!AudioSys.enabled);
+      $("#btn-sound").textContent = AudioSys.enabled ? "🔊" : "🔇";
+      if (AudioSys.enabled) AudioSys.cw("CQ");
+    } catch (_) {}
+  });
+  const speeds = [1, 2, 4];
+  $("#btn-speed").addEventListener("click", () => {
+    G.speed = speeds[(speeds.indexOf(G.speed) + 1) % speeds.length];
+    $("#btn-speed").textContent = `▶ ${G.speed}x`;
+    updateStats();
+  });
+  $("#btn-pause").addEventListener("click", () => {
+    G.paused = !G.paused;
+    $("#btn-pause").textContent = G.paused ? "▶" : "⏸";
+    updateStats();
+  });
+  $("#btn-help").addEventListener("click", () => showModal(HELP_HTML));
+  $("#btn-save").addEventListener("click", saveGame);
+
+  // ── LOOP ──────────────────────────────────────────────────
+  function frame(ts) {
+    if (!lastTs) lastTs = ts;
+    let dt = Math.min(0.1, (ts - lastTs) / 1000);
+    lastTs = ts;
+    tick(dt);
+    // keep animating visuals even when paused (gentle idle)
+    if (G.paused || !gameStarted) {
+      animT += dt * 0.5;
+      updateVisuals(dt * 0.3);
+    }
+    draw();
+
+    if (ts - lastStatsUpdate > 120) {
+      lastStatsUpdate = ts;
+      updateStats();
+    }
+    if (ts - lastMissionUpdate > 500) {
+      lastMissionUpdate = ts;
+      updateMissionUI();
+    }
+    if (panelDirty) renderPanels(true);
+    else if (ts - lastPanelBuild > 2000 && (activeTab === "play" || activeTab === "orders")) renderPanels(true);
+    else if (logDirty && activeTab === "log") renderLog();
+
+    requestAnimationFrame(frame);
+  }
+
+  function boot() {
+    resize();
+    // Deep starter shelves so early sales don't die instantly
+    G.inventory.ic7300 = 3;
+    G.inventory.ft891 = 4;
+    G.inventory.x50a = 10;
+    G.inventory.x300a = 6;
+    G.inventory.mfj1778 = 8;
+    G.inventory.rs35m = 5;
+    G.inventory.atd878 = 8;
+    G.inventory.g90 = 4;
+    G.inventory.coax100 = 12;
+    G.inventory.htbattery = 16;
+    G.inventory.mfj941e = 5;
+    G.inventory.hm219 = 6;
+    log("Ham Radio Superstore ready. Manager: Henry.", "info");
+    showModal(WELCOME_HTML);
+    markPanelDirty();
+    renderPanels(true);
+    updateStats();
+    updateMissionUI();
+    requestAnimationFrame(frame);
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>
