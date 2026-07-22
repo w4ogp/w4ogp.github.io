@@ -587,7 +587,7 @@
       paused: false, speed: 1,
       departments: {
         receiving: { level: 1, queue: 0, queueCap: 10, process: 0, progress: 0, inbound: [] },
-        stock: { level: 1, cap: 34 },
+        stock: { level: 1, cap: 48 },
         sales: { level: 1, queue: 0, queueCap: 9, customers: 0, salesToday: 0, progress: 0 },
         shipping: { level: 1, queue: 0, queueCap: 8, backlog: 0, progress: 0 },
         manager: { level: 1, lastEvent: 0, salesBoost: 0, lastSaying: 0, lastMood: "" },
@@ -847,19 +847,123 @@
     return Math.max(0, Math.floor(Number(G.inventory[id]) || 0));
   }
 
+  function ensureReceiving() {
+    if (!G.departments) G.departments = {};
+    if (!G.departments.receiving) {
+      G.departments.receiving = { level: 1, queue: 0, queueCap: 10, process: 0, progress: 0, inbound: [] };
+    }
+    const d = G.departments.receiving;
+    if (!Array.isArray(d.inbound)) d.inbound = [];
+    if (d.queue == null || !Number.isFinite(d.queue)) d.queue = 0;
+    if (d.queueCap == null || !Number.isFinite(d.queueCap)) d.queueCap = 10;
+    // Keep queue in sync with inbound totals when drifted
+    const inboundSum = d.inbound.reduce((a, it) => a + Math.max(0, it?.qty | 0), 0);
+    if (d.queue !== inboundSum) d.queue = inboundSum;
+    return d;
+  }
+
   function stockOnDock(id) {
+    const inbound = ensureReceiving().inbound;
     let n = 0;
-    const inbound = G.departments?.receiving?.inbound;
-    if (!Array.isArray(inbound)) return 0;
     for (const item of inbound) {
-      if (item && item.productId === id) n += Math.max(0, item.qty | 0);
+      if (item && String(item.productId) === String(id)) n += Math.max(0, item.qty | 0);
     }
     return n;
   }
 
   function stockIncoming(id) {
     if (!Array.isArray(G.onOrder)) return 0;
-    return G.onOrder.reduce((a, o) => a + (o.productId === id ? (o.qty | 0) : 0), 0);
+    return G.onOrder.reduce((a, o) => {
+      if (!o || String(o.productId) !== String(id)) return a;
+      return a + Math.max(0, o.qty | 0);
+    }, 0);
+  }
+
+  /** Full pipeline count for a SKU (shelves + dock + trucks). */
+  function stockTotal(id) {
+    return stockOnHand(id) + stockOnDock(id) + stockIncoming(id);
+  }
+
+  function stockStatusLabel(id) {
+    const hand = stockOnHand(id);
+    const dock = stockOnDock(id);
+    const truck = stockIncoming(id);
+    const total = hand + dock + truck;
+    const p = product(id);
+    if (total <= 0) {
+      return `<span class="chip bad">None in store — order to restock</span>`;
+    }
+    const parts = [];
+    if (hand) parts.push(`${hand} shelves`);
+    if (dock) parts.push(`${dock} dock`);
+    if (truck) parts.push(`${truck} truck`);
+    let extra = "";
+    if (hand === 0 && (dock || truck)) {
+      extra = ` <span class="chip warn">waiting putaway/truck</span>`;
+    } else if (p && p.cat === "transceiver" && hand > 0 && hand <= 2) {
+      extra = ` <span class="chip warn">low — reserve held</span>`;
+    }
+    return `<span class="price">${total} in pipeline</span> <span class="chip">${parts.join(" · ")}</span>${extra}`;
+  }
+
+  function addToInventory(productId, qty) {
+    if (!productId || qty <= 0) return 0;
+    ensureInventory();
+    const id = String(productId);
+    const space = Math.max(0, stockCap() - totalInventoryUnits());
+    const put = Math.min(qty, space);
+    if (put > 0) {
+      G.inventory[id] = stockOnHand(id) + put;
+      // Protect freshly shelved gear from same-tick sellout (esp. radios)
+      if (!G.justShelved) G.justShelved = {};
+      G.justShelved[id] = (G.justShelved[id] || 0) + put;
+    }
+    return put;
+  }
+
+  function addToDock(productId, qty) {
+    if (!productId || qty <= 0) return;
+    const d = ensureReceiving();
+    const id = String(productId);
+    // Merge into existing inbound line for this SKU
+    const existing = d.inbound.find(it => it && String(it.productId) === id);
+    if (existing) existing.qty = (existing.qty | 0) + qty;
+    else d.inbound.push({ productId: id, qty });
+    d.queue = d.inbound.reduce((a, it) => a + Math.max(0, it?.qty | 0), 0);
+  }
+
+  /** Prefer putaway of radios/amps over cheap accessories when space is tight. */
+  function sortInboundPriority() {
+    const d = ensureReceiving();
+    const rank = (id) => {
+      const p = product(id);
+      if (!p) return 0;
+      if (p.cat === "transceiver") return 100 + p.price / 1000;
+      if (p.cat === "amplifier") return 80 + p.price / 1000;
+      if (p.cat === "ht") return 50;
+      return 10 + (p.price || 0) / 5000;
+    };
+    d.inbound.sort((a, b) => rank(b?.productId) - rank(a?.productId));
+  }
+
+  /**
+   * How many units of a SKU are allowed to sell this moment.
+   * Keeps a small reserve on transceivers so they can "refill" visibly,
+   * and blocks same-tick sellout of just-shelved gear.
+   */
+  function sellableCount(p) {
+    if (!p) return 0;
+    const hand = stockOnHand(p.id);
+    if (hand <= 0) return 0;
+    const protectedFresh = Math.min(hand, (G.justShelved && G.justShelved[p.id]) || 0);
+    let avail = hand - protectedFresh;
+    // Hold back a display/reserve unit for radios when other stock exists
+    if (p.cat === "transceiver" || p.cat === "amplifier") {
+      const otherStock = totalInventoryUnits() - hand;
+      const reserve = otherStock > 0 ? 1 : 0;
+      avail = Math.max(0, Math.min(avail, hand - reserve));
+    }
+    return Math.max(0, avail);
   }
 
   function totalInventoryUnits() {
@@ -870,7 +974,7 @@
   }
 
   function stockCap() {
-    const cap = G.departments?.stock?.cap ?? 34;
+    const cap = G.departments?.stock?.cap ?? 48;
     return Math.floor(cap * STORE_TIERS[G.storeTier | 0].capMult);
   }
 
@@ -1217,42 +1321,59 @@
   }
 
   function orderProduct(productId, qty) {
+    productId = String(productId || "");
     const p = product(productId);
-    if (!p || p.unlock > G.unlockLevel) return;
+    if (!p) { toast("Unknown product"); return; }
+    if (p.unlock > G.unlockLevel) { toast("Product still locked"); return; }
     qty = Math.max(1, Math.min(50, qty | 0));
     const cost = p.cost * qty;
     if (G.cash < cost) { toast("Not enough cash"); return; }
     const sup = supplier(p.brand);
-    const lead = (sup ? sup.lead : 10) * (0.85 + Math.random() * 0.3);
-    const delay = (sup && Math.random() > sup.reliability) ? lead * 0.45 : 0;
+    const lead = Math.max(4, (sup ? sup.lead : 10) * (0.7 + Math.random() * 0.25));
+    const delay = (sup && Math.random() > sup.reliability) ? lead * 0.35 : 0;
     G.cash -= cost;
-    G.onOrder.push({
-      id: "ord_" + Math.random().toString(36).slice(2, 8),
-      productId, qty, cost, supplier: p.brand,
-      arriveAt: G.time + lead + delay,
-    });
+    if (!Array.isArray(G.onOrder)) G.onOrder = [];
+    const existing = G.onOrder.find(o => o && String(o.productId) === productId);
+    if (existing) {
+      existing.qty = (existing.qty | 0) + qty;
+      existing.cost = (existing.cost || 0) + cost;
+      existing.arriveAt = Math.min(existing.arriveAt || 1e9, G.time + lead + delay);
+    } else {
+      G.onOrder.push({
+        id: "ord_" + Math.random().toString(36).slice(2, 8),
+        productId, qty, cost, supplier: p.brand,
+        arriveAt: G.time + lead + delay,
+      });
+    }
     G.flags.ordered = true;
+    ensureInventory();
+    if (G.inventory[productId] == null) G.inventory[productId] = 0;
     AudioSys.dock();
-    log(`Ordered ${qty}× ${p.name} from ${sup?.name || p.brand}.`, "info");
-    toast(`Truck en route: ${qty}× ${p.name}`);
-    // visual truck
-    trucks.push({ t: 0, life: 0, productId, qty, life: 1 });
+    log(`Ordered ${qty}x ${p.name} from ${sup?.name || p.brand}.`, "info");
+    toast(`Truck en route: ${qty}x ${p.name} (${stockIncoming(productId)} on trucks)`);
+    trucks.push({ t: 0, pos: 0, productId, qty, life: 1 });
     markPanelDirty();
   }
 
   function autoRestock() {
     let n = 0;
-    // Prefer high demand / lower cost so cash turns over quickly
-    const list = unlockedProducts().slice().sort((a, b) => (b.demand / Math.max(1, b.cost)) - (a.demand / Math.max(1, a.cost)));
+    // Prefer empty/low radios first, then other high-demand SKUs
+    const list = unlockedProducts().slice().sort((a, b) => {
+      const ta = stockTotal(a.id), tb = stockTotal(b.id);
+      const ra = (a.cat === "transceiver" ? 20 : 0) + (ta === 0 ? 10 : 0) + a.demand;
+      const rb = (b.cat === "transceiver" ? 20 : 0) + (tb === 0 ? 10 : 0) + b.demand;
+      if (ta !== tb) return ta - tb; // lowest pipeline first
+      return rb - ra;
+    });
     const reserve = 550; // keep operating cash
     for (const p of list) {
-      const q = stockOnHand(p.id) + stockOnDock(p.id);
-      const incoming = stockIncoming(p.id);
-      if (q + incoming < 3) {
-        const qty = Math.min(3, 3 - q - incoming);
+      const q = stockTotal(p.id);
+      const target = p.cat === "transceiver" ? 4 : 3;
+      if (q < target) {
+        const qty = Math.min(p.cat === "transceiver" ? 4 : 3, target - q);
         if (qty > 0 && G.cash - p.cost * qty >= reserve) { orderProduct(p.id, qty); n++; }
       }
-      if (n >= 5) break;
+      if (n >= 6) break;
     }
     if (!n) toast("Nothing to restock (keep ~$550 reserve, or shelves are fine)");
     else toast(`Restocked ${n} product lines`);
@@ -1274,7 +1395,7 @@
     G.cash -= price;
     d.level++;
     if (dept === "receiving") d.queueCap = 10 + d.level * 5;
-    if (dept === "stock") d.cap = 34 + d.level * 22;
+    if (dept === "stock") d.cap = 48 + d.level * 24;
     if (dept === "sales") d.queueCap = 9 + d.level * 3;
     if (dept === "shipping") d.queueCap = 8 + d.level * 5;
     if (d.level >= 2) G.unlockLevel = Math.max(G.unlockLevel, 1);
@@ -1379,6 +1500,8 @@
     const t = dt * G.speed;
     G.time += t;
     animT += t;
+    // Clear same-tick shelf protection from previous frame
+    G.justShelved = {};
 
     const dayLen = 55; // payday a bit more often
     const prevDay = G.day;
@@ -1401,46 +1524,79 @@
       stephanieDailyJoke(true);
     }
 
-    // Arrivals
+    // Arrivals — put as much as possible on shelves immediately; overflow → dock
+    ensureReceiving();
+    if (!Array.isArray(G.onOrder)) G.onOrder = [];
     for (let i = G.onOrder.length - 1; i >= 0; i--) {
       const o = G.onOrder[i];
-      if (G.time < o.arriveAt) continue;
-      const d = G.departments.receiving;
-      const free = d.queueCap - d.queue;
-      if (free <= 0) { o.arriveAt = G.time + 2; G.satisfaction = Math.max(0, G.satisfaction - 0.03 * t); continue; }
-      const take = Math.min(o.qty, free);
-      d.queue += take;
-      o.qty -= take;
-      d.inbound.push({ productId: o.productId, qty: take });
+      if (!o || G.time < o.arriveAt) continue;
+      const d = ensureReceiving();
+      const pname = product(o.productId)?.name || o.productId;
+      let left = Math.max(0, o.qty | 0);
+      if (left <= 0) { G.onOrder.splice(i, 1); continue; }
+
+      // 1) Shelves first (so ordered gear shows as on hand, not forever "0")
+      const toShelves = addToInventory(o.productId, left);
+      left -= toShelves;
+      if (toShelves > 0) {
+        spawnPackageFlow("dock", "stock", Math.min(3, toShelves));
+        spawnFloater(deptCenter("stock").x, deptCenter("stock").y, `+${toShelves} stock`, "#3dd68c");
+        log(`Unloaded ${toShelves}× ${pname} onto shelves.`, "good");
+      }
+
+      // 2) Remainder to dock if bay has room
+      if (left > 0) {
+        const freeDock = Math.max(0, d.queueCap - d.queue);
+        if (freeDock <= 0) {
+          // Truck waits outside
+          o.qty = left;
+          o.arriveAt = G.time + 2;
+          G.satisfaction = Math.max(0, G.satisfaction - 0.03 * t);
+          if (toShelves > 0) AudioSys.dock();
+          continue;
+        }
+        const toDock = Math.min(left, freeDock);
+        addToDock(o.productId, toDock);
+        left -= toDock;
+        spawnPackageFlow("dock", "receiving", Math.min(3, toDock));
+        log(`Dock holding ${toDock}× ${pname} (waiting putaway).`, "info");
+      }
+
       AudioSys.dock();
-      log(`Dock received ${take}× ${product(o.productId).name}.`, "good");
-      spawnPackageFlow("dock", "receiving", take);
-      if (o.qty <= 0) G.onOrder.splice(i, 1);
-      else o.arriveAt = G.time + 1.2;
+      if (left <= 0) G.onOrder.splice(i, 1);
+      else {
+        o.qty = left;
+        o.arriveAt = G.time + 1.5;
+      }
     }
 
     // Receiving → stock (progress accumulates across frames)
     {
-      const d = G.departments.receiving;
+      const d = ensureReceiving();
       if (d.progress == null) d.progress = 0;
-      const rate = deptRate("receiving", d.level, 0.55);
+      // Radios waiting on the dock jump the putaway line
+      sortInboundPriority();
+      const rate = deptRate("receiving", d.level, 0.7);
       d.progress += rate * t;
-      let guard = 20;
-      while (d.progress >= 1 && d.inbound.length && d.queue > 0 && guard-- > 0) {
+      let guard = 24;
+      while (d.progress >= 1 && d.inbound.length && guard-- > 0) {
+        // Re-prioritize each unit so radios don't sit behind coax forever
+        if (guard % 3 === 0) sortInboundPriority();
         const item = d.inbound[0];
-        ensureInventory();
+        if (!item || (item.qty | 0) <= 0) { d.inbound.shift(); continue; }
         const space = stockCap() - totalInventoryUnits();
         if (space < 1) { G.satisfaction = Math.max(0, G.satisfaction - 0.11 * t); break; }
+        const put = addToInventory(item.productId, 1);
+        if (put < 1) break;
         item.qty -= 1;
-        d.queue = Math.max(0, d.queue - 1);
-        const pid = item.productId;
-        if (pid) G.inventory[pid] = stockOnHand(pid) + 1;
         d.progress -= 1;
-        if (item.qty <= 0) d.inbound.shift();
+        if ((item.qty | 0) <= 0) d.inbound.shift();
+        d.queue = d.inbound.reduce((a, it) => a + Math.max(0, it?.qty | 0), 0);
         spawnPackageFlow("receiving", "stock", 1);
-        spawnFloater(deptCenter("receiving").x, deptCenter("receiving").y, "+1", "#3dd68c");
+        spawnFloater(deptCenter("receiving").x, deptCenter("receiving").y, "+1 shelf", "#3dd68c");
       }
-      if (!d.inbound.length || d.queue <= 0) d.progress = Math.min(d.progress, 0.95);
+      if (!d.inbound.length) d.progress = Math.min(d.progress, 0.95);
+      d.queue = d.inbound.reduce((a, it) => a + Math.max(0, it?.qty | 0), 0);
     }
 
     // Sales — customers buy; MOST cash pays out immediately
@@ -1470,17 +1626,35 @@
       sales.progress += rate * t;
 
       ensureInventory();
-      const avail = unlockedProducts().filter(p => stockOnHand(p.id) > 0);
-      // Allow a few sales/frame so packages arrive faster than Dave can pack
-      let guard = 5;
+      const avail = unlockedProducts().filter(p => sellableCount(p) > 0);
+      // Limit burst sales; max one radio per tick so radio stock can rebuild
+      let guard = 4;
+      let radiosSoldThisTick = 0;
       while (sales.progress >= 1 && sales.customers >= 1 && avail.length && guard-- > 0) {
         let totalW = 0;
-        const weights = avail.map(p => { const w = p.demand * (0.5 + Math.random()); totalW += w; return w; });
+        const weights = avail.map(p => {
+          let w = p.demand * (0.45 + Math.random());
+          const hand = stockOnHand(p.id);
+          // Prefer selling plentiful items; don't drain last radio units
+          w *= Math.sqrt(Math.max(1, hand));
+          if (p.cat === "transceiver") {
+            w *= 0.55; // accessories/antennas sell more readily than radios
+            if (hand <= 2) w *= 0.25;
+            if (radiosSoldThisTick >= 1) w = 0;
+          }
+          return w;
+        });
+        totalW = weights.reduce((a, b) => a + b, 0);
+        if (totalW <= 0) break;
         let r = Math.random() * totalW, chosen = avail[0];
         for (let i = 0; i < avail.length; i++) { r -= weights[i]; if (r <= 0) { chosen = avail[i]; break; } }
-        if (stockOnHand(chosen.id) <= 0) { avail.splice(avail.indexOf(chosen), 1); continue; }
+        if (sellableCount(chosen) <= 0) { avail.splice(avail.indexOf(chosen), 1); continue; }
 
         G.inventory[chosen.id] = stockOnHand(chosen.id) - 1;
+        if (G.justShelved && G.justShelved[chosen.id]) {
+          G.justShelved[chosen.id] = Math.max(0, G.justShelved[chosen.id] - 1);
+        }
+        if (chosen.cat === "transceiver") radiosSoldThisTick++;
         sales.customers = Math.max(0, sales.customers - 1);
         sales.progress -= 1;
 
@@ -1515,7 +1689,8 @@
         spawnWalker("customer");
         if (Math.random() < 0.35) AudioSys.cash();
 
-        if (stockOnHand(chosen.id) <= 0) {
+        // Refresh availability list for this SKU
+        if (sellableCount(chosen) <= 0) {
           const idx = avail.indexOf(chosen);
           if (idx >= 0) avail.splice(idx, 1);
         }
@@ -2428,12 +2603,10 @@
       <div class="section-title">Top stock on hand</div>
       ${unlockedProducts().map(p => ({
         p,
-        q: stockOnHand(p.id),
-        dock: stockOnDock(p.id),
-        truck: stockIncoming(p.id),
-      })).sort((a, b) => (b.q + b.dock + b.truck) - (a.q + a.dock + a.truck)).slice(0, 8).map(({ p, q, dock, truck }) =>
+        total: stockTotal(p.id),
+      })).sort((a, b) => b.total - a.total).slice(0, 8).map(({ p, total }) =>
         `<div class="prod-row"><div><div class="name">${p.name}</div>
-         <div class="sub"><span class="price">${q} on hand</span>${dock ? ` · ${dock} on dock` : ""}${truck ? ` · ${truck} on truck` : ""} · sell ${fmt$(p.price)}</div></div>
+         <div class="sub">${stockStatusLabel(p.id)} · sell ${fmt$(p.price)}</div></div>
          <div class="acts"><button type="button" class="small" data-act="order" data-id="${p.id}" data-qty="3">+3</button></div></div>`
       ).join("") || `<div class="card"><p>No stock yet — order from Buy stock.</p></div>`}
     `;
@@ -2527,19 +2700,11 @@
       if (!items.length) continue;
       html += `<div class="section-title">${cat}</div>`;
       for (const p of items) {
-        const q = stockOnHand(p.id);
-        const dock = stockOnDock(p.id);
-        const truck = stockIncoming(p.id);
         const sup = supplier(p.brand);
-        const stockLabel = q > 0
-          ? `<span class="price">${q} on hand</span>`
-          : (dock || truck)
-            ? `<span class="chip warn">0 on hand${dock ? ` · ${dock} dock` : ""}${truck ? ` · ${truck} truck` : ""}</span>`
-            : `<span class="chip bad">0 on hand</span>`;
         html += `<div class="prod-row">
           <div>
             <div class="name">${p.name}</div>
-            <div class="sub">${sup?.name || p.brand} · cost <span class="cost">${fmt$(p.cost)}</span> · sell <span class="price">${fmt$(p.price)}</span> · ${stockLabel}</div>
+            <div class="sub">${sup?.name || p.brand} · cost <span class="cost">${fmt$(p.cost)}</span> · sell <span class="price">${fmt$(p.price)}</span><br>${stockStatusLabel(p.id)}</div>
           </div>
           <div class="acts">
             <button type="button" class="small" data-act="order" data-id="${p.id}" data-qty="1">1</button>
