@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Ham Radio Superstore</title>
+<title>Ham Radio Outlet</title>
 <style>
   :root {
     --bg: #0b1220;
@@ -334,7 +334,7 @@
 <body>
 <div id="app">
   <header>
-    <h1>📡 Ham Radio <span>Superstore</span></h1>
+    <h1>📡 Ham Radio <span>Outlet</span></h1>
     <div class="stats">
       <div class="stat"><span class="lbl">Cash</span><b id="st-cash">$8,000</b></div>
       <div class="stat" title="Money from sales waiting to ship"><span class="lbl">Outgoing</span><b id="st-pending" style="color:#e0a33a">$0</b></div>
@@ -515,7 +515,7 @@
   const STORE_TIERS = [
     { name: "Starter Shack", capMult: 1, maxStaff: 6, cost: 0, w: 30, h: 20 },
     { name: "Neighborhood Outlet", capMult: 1.6, maxStaff: 10, cost: 8000, w: 36, h: 24 },
-    { name: "Regional Superstore", capMult: 2.4, maxStaff: 16, cost: 25000, w: 44, h: 30 },
+    { name: "Regional Outlet", capMult: 2.4, maxStaff: 16, cost: 25000, w: 44, h: 30 },
     { name: "Metro Ham Mega-Mart", capMult: 3.5, maxStaff: 24, cost: 75000, w: 52, h: 36 },
     { name: "National Flagship", capMult: 5, maxStaff: 36, cost: 200000, w: 62, h: 42 },
   ];
@@ -599,7 +599,7 @@
         stock: { level: 1, cap: 40 },
         sales: { level: 1, queue: 0, queueCap: 10, customers: 0, salesToday: 0, progress: 0 },
         shipping: { level: 1, queue: 0, queueCap: 14, backlog: 0, progress: 0 },
-        manager: { level: 1, lastEvent: 0, salesBoost: 0 },
+        manager: { level: 1, lastEvent: 0, salesBoost: 0, lastSaying: 0, lastMood: "" },
       },
       staff: {
         manager: [{ id: "henry", name: "Henry", role: "manager", skill: 1.2, train: 1, wage: 60 }],
@@ -668,6 +668,63 @@
     el.classList.add("show");
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => el.classList.remove("show"), ms);
+  }
+
+  // Henry's country wisdom — bad days & barn-burners
+  const HENRY_BAD = [
+    "Well butter my biscuit, that dock's piled higher than a haystack in July!",
+    "Shoot, we're busier than a one-legged cat in a sandbox — hire somebody!",
+    "That shipping line's longer than a country mile. Dave need a cousin!",
+    "Customers are madder than a wet hen. Fix them aisles, y'all!",
+    "We're broker than a joke — quit buyin' boats and sell some radios!",
+    "Empty shelves? That's like a barbecue with no brisket. Restock!",
+    "This backlog's stickier than molasses in January.",
+    "Lord have mercy, happiness is lower than a snake's belt buckle.",
+    "We're movin' slower than grandma's dial-up. Train that crew!",
+    "If this keep up I'll be sellin' bait instead of beam antennas.",
+    "That receiving bay looks like a tornado hit a pallet factory.",
+    "Folks walkin' out faster than freeloaders at a church potluck.",
+  ];
+  const HENRY_GOOD = [
+    "Hot diggity! We're sellin' like iced tea at a July picnic!",
+    "Now that's what I call a barn burner — cash flowin' like sweet tea!",
+    "Yeehaw! Happier customers than pigs in a peanut patch!",
+    "We're cookin' with peanut oil now, boys and girls!",
+    "Look at that register sing — prettier than a sunrise over the farm!",
+    "Bless your heart, this crew's sharper than a tack!",
+    "We're busier than a bee in a honeysuckle patch — and lovin' it!",
+    "That profit's fatter than a county-fair prize hog!",
+    "Whoo-wee! Outgoing cleared cleaner than a whistle!",
+    "We're growin' faster than kudzu on a sunny fence!",
+    "If sales stay this good I'll buy the whole repeater site!",
+    "That's a ten-gallon day if I ever saw one. 73 and pass the biscuits!",
+  ];
+  const HENRY_SLOW = [
+    "Quiet as a church mouse in here — time I worked the counter myself!",
+    "Slow day? Well I'll just charm 'em like a fox at the henhouse.",
+    "Ain't nobody buyin'? Hold my sweet tea — Henry's got this.",
+    "Dust on the IC-7300? Not on my watch, partner.",
+  ];
+
+  function henrySay(mood, force = false) {
+    const mgr = G.departments.manager;
+    if (!mgr.lastSaying) mgr.lastSaying = 0;
+    // Don't spam — unless forced (sales-floor events)
+    if (!force && G.time - mgr.lastSaying < 18) return;
+    if (!force && mgr.lastMood === mood && G.time - mgr.lastSaying < 40) return;
+    const pool = mood === "good" ? HENRY_GOOD : mood === "slow" ? HENRY_SLOW : HENRY_BAD;
+    const line = "Henry: \"" + pick(pool) + "\"";
+    mgr.lastSaying = G.time;
+    mgr.lastMood = mood;
+    G.henryEvents++;
+    toast(line, 4200);
+    log(line, mood === "good" ? "good" : mood === "slow" ? "warn" : "warn");
+    try {
+      if (mood === "good") AudioSys.hire();
+      else if (mood === "bad") AudioSys.anger();
+      else AudioSys.henry();
+    } catch (_) {}
+    if (mood !== "good") spawnWalker("henry");
   }
 
   function totalInventoryUnits() { return Object.values(G.inventory).reduce((a, b) => a + b, 0); }
@@ -799,7 +856,7 @@
       return {
         id: "happy",
         goal: "Raise customer satisfaction",
-        why: "Clear bottlenecks, keep stock available, and train sales. Henry may jump in when sales lag.",
+        why: "Clear bottlenecks, keep stock available, and train sales. Henry'll holler a country saying and hop the counter.",
         cta: "Review Play tab",
         action: () => { setTab("play"); renderPanels(true); },
         checks: buildChecks(),
@@ -971,6 +1028,7 @@
     AudioSys.expand();
     log(`Upgraded ${dept} to Lv${d.level}.`, "good");
     toast(`${dept} → Level ${d.level}`);
+    henrySay("good", true);
     markPanelDirty();
   }
 
@@ -995,6 +1053,7 @@
     AudioSys.expand(); AudioSys.cw("73");
     log(`Expanded to ${next.name}!`, "good");
     toast("🏗️ " + next.name);
+    henrySay("good", true);
     markPanelDirty();
   }
 
@@ -1210,30 +1269,43 @@
       }
     }
 
-    // Henry event
+    // Henry: sales-floor help + country commentary
     {
       const spm = currentSalesPerMin();
       const mgr = G.departments.manager;
-      const expected = 20 + G.storeTier * 40 + roleSkill("sales") * 30;
-      if (spm < expected * 0.35 && G.time - mgr.lastEvent > 45 && roleSkill("sales") < 3) {
+      const expected = 40 + G.storeTier * 50 + roleSkill("sales") * 40;
+      const stockUnits = totalInventoryUnits();
+      const clutter = stockUnits / Math.max(1, stockCap());
+      const shipQ = G.pendingShip.length;
+      const dockQ = G.departments.receiving.queue;
+
+      // Slow sales → Henry works the floor + a country quip
+      if (spm < expected * 0.35 && G.time - mgr.lastEvent > 40 && roleSkill("sales") < 4) {
         mgr.lastEvent = G.time;
-        mgr.salesBoost = 12 + mgr.level * 4;
-        G.henryEvents++;
-        AudioSys.henry();
-        const line = pick([
-          "Henry hits the floor: 'Who wants an IC-7300 demo?'",
-          "Henry: 'Slow day? Bundle FT-891 + antenna!'",
-          "Manager sales event — Henry works the counter!",
-        ]);
-        toast(line, 3800);
-        log(line, "warn");
-        spawnWalker("henry");
+        mgr.salesBoost = 14 + mgr.level * 4;
+        henrySay("slow", true);
       }
-      if (G.satisfaction > 80 && spm > expected * 0.5) G.satisfaction = Math.min(100, G.satisfaction + 0.02 * t);
+
+      // Things going wrong
+      if (G.satisfaction < 45) henrySay("bad");
+      else if (clutter > 0.92) henrySay("bad");
+      else if (shipQ > G.departments.shipping.queueCap * 0.9) henrySay("bad");
+      else if (dockQ > G.departments.receiving.queueCap * 0.85) henrySay("bad");
+      else if (stockUnits < 4 && G.onOrder.length === 0) henrySay("bad");
+      else if (G.cash < 250) henrySay("bad");
+
+      // Things going really well
+      if (G.satisfaction > 88 && spm > expected * 0.85) henrySay("good");
+      else if (spm > expected * 1.4 && G.satisfaction > 70) henrySay("good");
+      else if (shipQ === 0 && stockUnits > 12 && G.satisfaction > 80 && spm > 30) henrySay("good");
+
+      if (G.satisfaction > 80 && spm > expected * 0.5) {
+        G.satisfaction = Math.min(100, G.satisfaction + 0.02 * t);
+      }
     }
 
     if (G.satisfaction < 40 && Math.random() < 0.003 * t) {
-      toast("Angry reviews on the repeater net…");
+      henrySay("bad");
       G.reputation = Math.max(0, G.reputation - 1);
     }
 
@@ -1843,7 +1915,7 @@
       stock: "Shelf capacity. Over 85% full = angry customers. Expand when full.",
       sales: "Customers buy here. Hire/train sales. Empty shelves lose sales.",
       shipping: "Packages become cash only after shipping. Hire Dave.",
-      manager: "Henry boosts sales when the store is slow.",
+      manager: "Henry works the floor on slow days and drops country wisdom when things get wild.",
     };
     const d = G.departments[key];
     let meters = "";
@@ -2066,7 +2138,7 @@
     html += `<div class="section-title">Stats</div>
       <div class="card">
         <p>Revenue ${fmt$(G.totalRevenue)} · Sold ${G.totalSold} · Customers ${G.customersServed}</p>
-        <p>Henry events ${G.henryEvents} · Catalog unlock L${G.unlockLevel}</p>
+        <p>Henry sayings ${G.henryEvents} · Catalog unlock L${G.unlockLevel}</p>
       </div>`;
     el.innerHTML = html;
   }
@@ -2093,7 +2165,7 @@
       const m = getMission();
       if (m.action) m.action();
     }
-    else if (act === "cw") { AudioSys.cw("73"); toast("CQ de Superstore — 73"); }
+    else if (act === "cw") { AudioSys.cw("73"); toast("CQ de HRO — 73"); }
     markPanelDirty();
     renderPanels(true);
     updateStats();
@@ -2118,8 +2190,8 @@
 
   // ── MODAL / CONTROLS ───────────────────────────────────────
   const WELCOME_HTML = `
-    <h2>Ham Radio Superstore</h2>
-    <p><b>Goal:</b> grow a tiny ham radio shop into a massive superstore.</p>
+    <h2>Ham Radio Outlet</h2>
+    <p><b>Goal:</b> grow a tiny ham radio shop into a massive Ham Radio Outlet.</p>
     <div class="flow-diagram">
       <span>Stock shelves</span><span class="arrow">→</span>
       <span>Customers buy</span><span class="arrow">→</span>
@@ -2132,7 +2204,7 @@
       <li>Hire more staff and upgrade rooms when lines turn red.</li>
       <li><b>Outgoing</b> in the header is the small remainder waiting on packages — not a black hole.</li>
     </ol>
-    <p>Manager <b>Henry</b> helps when sales slow down. Use the glowing <b>Next action</b> if stuck.</p>
+    <p>Manager <b>Henry</b> jumps the counter on slow days — and fires off funny country sayings when business is busted <i>or</i> booming.</p>
     <div class="row" style="margin-top:12px">
       <button type="button" class="primary" id="btn-start">Start Selling · 73!</button>
       <button type="button" id="btn-load">Load Save</button>
@@ -2147,7 +2219,7 @@
       <li><b>Trucks</b> — incoming POs only (suppliers list scrolls in its own box).</li>
       <li><b>Grow</b> — expand building & upgrade rooms.</li>
     </ol>
-    <p>Cash arrives only after shipping. Bottlenecks (full dock, full stock, ship backlog) drop happiness.</p>
+    <p>Most cash hits on sale; shipping clears the rest. Bottlenecks drop happiness. Henry drops country one-liners when business is bad <i>or</i> great.</p>
     <div class="row"><button type="button" class="primary" id="btn-close-help">Close</button></div>`;
 
   function showModal(html) { $("#modal").innerHTML = html; $("#modal-bg").classList.add("show"); }
@@ -2157,8 +2229,8 @@
     gameStarted = true;
     hideModal();
     try { AudioSys.resume(); AudioSys.setEnabled(true); AudioSys.startAmbient(); AudioSys.cw("73"); } catch (_) {}
-    log("Doors open. Stephany, Peter, and Dave are on duty — sales pay cash immediately!", "good");
-    toast("Store open! Cash grows as customers buy. Restock when shelves run low.");
+    log("Doors open at Ham Radio Outlet. Stephany, Peter, and Dave are on duty!", "good");
+    toast("Henry: \"Welcome to the Outlet — let's sell some radios, y'all!\"");
     // seed ambient walkers
     for (let i = 0; i < 4; i++) spawnWalker("customer");
     markPanelDirty();
@@ -2246,7 +2318,7 @@
     G.inventory.htbattery = 16;
     G.inventory.mfj941e = 5;
     G.inventory.hm219 = 6;
-    log("Ham Radio Superstore ready. Manager: Henry.", "info");
+    log("Ham Radio Outlet ready. Manager: Henry (country philosopher).", "info");
     showModal(WELCOME_HTML);
     markPanelDirty();
     renderPanels(true);
