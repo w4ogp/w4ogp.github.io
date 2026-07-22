@@ -253,16 +253,6 @@
   .bar.blue > i { background: var(--accent2); }
   .bar.purple > i { background: var(--purple); }
 
-  .supplier-wrap {
-    display: flex; flex-wrap: wrap; gap: 5px;
-    max-height: 72px;
-    overflow-y: auto;
-    margin-bottom: 8px;
-    padding: 6px;
-    background: #0b1220;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-  }
   .prod-row {
     display: grid;
     grid-template-columns: 1fr auto;
@@ -513,11 +503,12 @@
   };
 
   const STORE_TIERS = [
-    { name: "Starter Shack", capMult: 1, maxStaff: 6, cost: 0, w: 30, h: 20 },
-    { name: "Neighborhood Outlet", capMult: 1.6, maxStaff: 10, cost: 8000, w: 36, h: 24 },
-    { name: "Regional Outlet", capMult: 2.4, maxStaff: 16, cost: 25000, w: 44, h: 30 },
-    { name: "Metro Ham Mega-Mart", capMult: 3.5, maxStaff: 24, cost: 75000, w: 52, h: 36 },
-    { name: "National Flagship", capMult: 5, maxStaff: 36, cost: 200000, w: 62, h: 42 },
+    // Room for starter crew (4) + several more hires before forced expand
+    { name: "Starter Shack", capMult: 1, maxStaff: 10, cost: 0, w: 30, h: 20 },
+    { name: "Neighborhood Outlet", capMult: 1.6, maxStaff: 14, cost: 8000, w: 36, h: 24 },
+    { name: "Regional Outlet", capMult: 2.4, maxStaff: 20, cost: 25000, w: 44, h: 30 },
+    { name: "Metro Ham Mega-Mart", capMult: 3.5, maxStaff: 28, cost: 75000, w: 52, h: 36 },
+    { name: "National Flagship", capMult: 5, maxStaff: 40, cost: 200000, w: 62, h: 42 },
   ];
 
   const DEPT_KEYS = ["receiving", "stock", "sales", "shipping", "manager"];
@@ -598,7 +589,7 @@
         receiving: { level: 1, queue: 0, queueCap: 12, process: 0, progress: 0, inbound: [] },
         stock: { level: 1, cap: 40 },
         sales: { level: 1, queue: 0, queueCap: 10, customers: 0, salesToday: 0, progress: 0 },
-        shipping: { level: 1, queue: 0, queueCap: 14, backlog: 0, progress: 0 },
+        shipping: { level: 1, queue: 0, queueCap: 10, backlog: 0, progress: 0 },
         manager: { level: 1, lastEvent: 0, salesBoost: 0, lastSaying: 0, lastMood: "" },
       },
       staff: {
@@ -632,6 +623,39 @@
     const floor = role === "manager" ? 0 : 0.45;
     const staffPart = skill > 0 ? skill * 1.15 : floor;
     return (staffPart + base) * (0.85 + level * 0.35);
+  }
+
+  /**
+   * Shipping vs sales balance (starter: Peter + Dave, lv1):
+   * - Normal day: Dave keeps pace, backlog usually 0–2 (brief blips OK)
+   * - Henry sales boost / 2+ sales staff: bay piles up → hire/upgrade
+   * Work units/sec; packages cost ~1.0–1.6 each depending on size.
+   */
+  function shippingRate() {
+    const d = G.departments.shipping;
+    const skill = roleSkill("shipping");
+    const n = (G.staff.shipping || []).length;
+    if (n === 0) return 0.28 * (0.85 + d.level * 0.12);
+    // Dave (skill 1.15, lv1) ≈ 1.35 work/sec → roughly matches one salesperson
+    const perSkill = 0.92 + d.level * 0.1;
+    const bayBonus = 0.18 * Math.max(0, d.level - 1);
+    // First hire is full-strength; extra hands still help on rush days
+    const crewFactor = n === 1 ? 1 : (1 + 0.55 * (n - 1) + 0.12 * Math.max(0, n - 3));
+    return skill * perSkill * crewFactor + bayBonus;
+  }
+
+  /** Work units to pack one sold item (bigger gear = a bit slower). */
+  function shipWorkFor(productId) {
+    const p = product(productId);
+    const size = p ? (p.size || 1) : 1;
+    // size 1 ≈ 1.05, size 2 ≈ 1.4, size 4 ≈ 2.1 — not brutal at start
+    return 0.75 + size * 0.3;
+  }
+
+  function syncShipQueue() {
+    const d = G.departments.shipping;
+    d.backlog = G.pendingShip.length;
+    d.queue = G.pendingShip.length; // true backlog, not capped away
   }
 
   let G = defaultState();
@@ -729,17 +753,51 @@
 
   function totalInventoryUnits() { return Object.values(G.inventory).reduce((a, b) => a + b, 0); }
   function stockCap() { return Math.floor(G.departments.stock.cap * STORE_TIERS[G.storeTier].capMult); }
+  function ensureStaffShape() {
+    if (!G.staff || typeof G.staff !== "object") G.staff = {};
+    for (const role of ["manager", "sales", "receiving", "shipping"]) {
+      if (!Array.isArray(G.staff[role])) G.staff[role] = [];
+    }
+    // Henry must always exist
+    if (!G.staff.manager.some(s => s.id === "henry")) {
+      G.staff.manager.unshift({ id: "henry", name: "Henry", role: "manager", skill: 1.2, train: 1, wage: 60 });
+    }
+  }
+
   function staffCount() {
+    ensureStaffShape();
     return G.staff.sales.length + G.staff.receiving.length + G.staff.shipping.length + G.staff.manager.length;
   }
+
+  function maxStaffSlots() {
+    return STORE_TIERS[G.storeTier | 0]?.maxStaff ?? 10;
+  }
+
+  function staffSlotsFree() {
+    return Math.max(0, maxStaffSlots() - staffCount());
+  }
+
   function roleSkill(role) {
+    ensureStaffShape();
     const list = G.staff[role] || [];
     if (!list.length) return role === "manager" ? 1 : 0;
     return list.reduce((s, w) => s + w.skill * (w.train || 1), 0);
   }
+
+  /** First unhired candidate in a department, or null. */
+  function nextHireCandidate(role) {
+    ensureStaffShape();
+    const pool = STAFF_POOL[role];
+    if (!pool) return null;
+    return pool.find(p => !G.staff[role].some(s => s.id === p.id)) || null;
+  }
   function wagesPerDay() {
+    ensureStaffShape();
     let w = 0;
-    for (const role of Object.keys(G.staff)) for (const s of G.staff[role]) w += s.wage || 0;
+    for (const role of Object.keys(G.staff)) {
+      if (!Array.isArray(G.staff[role])) continue;
+      for (const s of G.staff[role]) w += s.wage || 0;
+    }
     return w;
   }
   function unlockedProducts() { return PRODUCTS.filter(p => p.unlock <= G.unlockLevel); }
@@ -816,15 +874,32 @@
         checks: buildChecks(),
       };
     }
-    if (shipQ > 10 || pendingCash() > G.cash * 0.8) {
+    if (shipQ >= 7 || pendingCash() > 400) {
+      const cand = nextHireCandidate("shipping");
+      const canHire = !!(cand && staffSlotsFree() > 0 && G.cash >= cand.wage * 3);
       return {
         id: "ship-bottleneck",
-        goal: "Clear shipping (Outgoing has " + fmt$(pendingCash()) + ")",
-        why: "Sales already paid most cash, but backlog still angers customers. Hire shippers or upgrade Shipping.",
-        cta: shipStaff < 2 ? "Hire another shipper" : "Upgrade shipping",
+        goal: "Shipping is backed up (" + shipQ + " packages · " + fmt$(pendingCash()) + ")",
+        why: canHire
+          ? `Rush of sales is outrunning the bay. Hire ${cand.name} (or another shipper) to clear packages.`
+          : staffSlotsFree() <= 0
+            ? "Ship bay is slammed but the building is full — expand for more headcount, or upgrade Shipping."
+            : "Ship bay is slammed — upgrade the bay or free up cash to hire.",
+        cta: canHire ? `Hire ${cand.name}` : staffSlotsFree() <= 0 ? "Expand building" : "Upgrade shipping",
         action: () => {
-          if (shipStaff < 2) { setTab("staff"); renderPanels(true); }
-          else { setTab("expand"); renderPanels(true); upgradeDept("shipping"); }
+          if (canHire) {
+            setTab("staff");
+            hireStaff("shipping", cand.id);
+            renderPanels(true);
+          } else if (staffSlotsFree() <= 0) {
+            setTab("expand");
+            renderPanels(true);
+            expandStore();
+          } else {
+            setTab("expand");
+            renderPanels(true);
+            upgradeDept("shipping");
+          }
         },
         checks: buildChecks(),
       };
@@ -918,29 +993,62 @@
 
   // ── ACTIONS ───────────────────────────────────────────────
   function hireStaff(role, personId) {
-    const pool = STAFF_POOL[role];
-    if (!pool) return;
-    const person = pool.find(p => p.id === personId);
-    if (!person || G.staff[role].some(s => s.id === personId)) return;
-    if (staffCount() >= STORE_TIERS[G.storeTier].maxStaff) {
-      toast("Building full — expand first!"); return;
+    try {
+      ensureStaffShape();
+      role = String(role || "").toLowerCase().trim();
+      personId = String(personId || "").toLowerCase().trim();
+      const pool = STAFF_POOL[role];
+      if (!pool) {
+        toast("Can't hire for " + role); return false;
+      }
+      const person = pool.find(p => p.id === personId);
+      if (!person) {
+        toast("Unknown applicant"); return false;
+      }
+      if (G.staff[role].some(s => s.id === personId)) {
+        toast(person.name + " is already on the team"); return false;
+      }
+      if (staffSlotsFree() <= 0) {
+        toast("No open desks (" + staffCount() + "/" + maxStaffSlots() + ") — expand the building!");
+        setTab("expand");
+        markPanelDirty();
+        return false;
+      }
+      const cost = Math.floor(person.wage * 3);
+      if (G.cash < cost) {
+        toast("Need " + fmt$(cost) + " to hire " + person.name); return false;
+      }
+      G.cash -= cost;
+      G.staff[role].push({
+        id: person.id,
+        name: person.name,
+        role,
+        skill: person.skill,
+        train: 1,
+        wage: person.wage,
+      });
+      if (role === "receiving") G.flags.hiredRecv = true;
+      if (role === "sales") G.flags.hiredSales = true;
+      if (role === "shipping") G.flags.hiredShip = true;
+      AudioSys.hire();
+      log(`Hired ${person.name} (${role}).`, "good");
+      toast(`${person.name} joined ${role}!`);
+      try {
+        const c = deptCenter(role === "manager" ? "manager" : role);
+        spawnSpark(c.x, c.y, "#3dd68c");
+      } catch (_) {}
+      markPanelDirty();
+      return true;
+    } catch (err) {
+      console.error("hireStaff", err);
+      toast("Hire failed — try again");
+      return false;
     }
-    const cost = person.wage * 3;
-    if (G.cash < cost) { toast("Need " + fmt$(cost) + " to hire"); return; }
-    G.cash -= cost;
-    G.staff[role].push({ id: person.id, name: person.name, role, skill: person.skill, train: 1, wage: person.wage });
-    if (role === "receiving") G.flags.hiredRecv = true;
-    if (role === "sales") G.flags.hiredSales = true;
-    if (role === "shipping") G.flags.hiredShip = true;
-    AudioSys.hire();
-    log(`Hired ${person.name} (${role}).`, "good");
-    toast(`${person.name} joined ${role}!`);
-    spawnSpark(deptCenter(role === "manager" ? "manager" : role).x, deptCenter(role === "manager" ? "manager" : role).y, "#3dd68c");
-    markPanelDirty();
   }
 
   function trainStaff(role, personId) {
-    const s = G.staff[role].find(x => x.id === personId);
+    ensureStaffShape();
+    const s = G.staff[role] && G.staff[role].find(x => x.id === personId);
     if (!s || s.train >= 2.5) return;
     const cost = Math.floor(80 * s.train * (role === "sales" ? 1.2 : 1));
     if (G.cash < cost) { toast("Need " + fmt$(cost)); return; }
@@ -953,6 +1061,7 @@
   }
 
   function fireStaff(role, personId) {
+    ensureStaffShape();
     if (role === "manager") return;
     const idx = G.staff[role].findIndex(s => s.id === personId);
     if (idx < 0) return;
@@ -1022,6 +1131,7 @@
     if (dept === "receiving") d.queueCap = 12 + d.level * 6;
     if (dept === "stock") d.cap = 40 + d.level * 25;
     if (dept === "sales") d.queueCap = 8 + d.level * 4;
+    // Higher level = more staging space before penalties (still fills when busy)
     if (dept === "shipping") d.queueCap = 10 + d.level * 5;
     if (d.level >= 2) G.unlockLevel = Math.max(G.unlockLevel, 1);
     if (d.level >= 3) G.unlockLevel = Math.max(G.unlockLevel, 2);
@@ -1075,7 +1185,25 @@
         G.departments[k] = Object.assign({}, base.departments[k], (loaded.departments || {})[k]);
         if (G.departments[k].progress == null) G.departments[k].progress = 0;
       }
+      // Merge staff arrays safely (broken saves used to drop shipping)
+      G.staff = G.staff || {};
+      for (const role of ["manager", "sales", "receiving", "shipping"]) {
+        if (!Array.isArray(loaded.staff?.[role])) {
+          G.staff[role] = Array.isArray(base.staff[role]) ? base.staff[role].slice() : [];
+        } else {
+          G.staff[role] = loaded.staff[role];
+        }
+      }
+      ensureStaffShape();
       if (!G.departments.receiving.inbound) G.departments.receiving.inbound = [];
+      if (!Array.isArray(G.pendingShip)) G.pendingShip = [];
+      for (const job of G.pendingShip) {
+        if (job.workLeft == null) job.workLeft = shipWorkFor(job.productId);
+      }
+      if (G.departments.shipping && (G.departments.shipping.queueCap > 24 || G.departments.shipping.queueCap < 8)) {
+        G.departments.shipping.queueCap = 10 + (G.departments.shipping.level || 1) * 5;
+      }
+      syncShipQueue();
       if (!G.flags) G.flags = { hiredRecv: true, hiredSales: true, hiredShip: true, ordered: true, sold: G.totalSold > 0 };
       // Rescue broken old saves that never accumulated progress (no revenue)
       if ((G.totalRevenue || 0) < 1 && staffCount() <= 1) {
@@ -1174,9 +1302,10 @@
         if (Math.random() < 0.002 * t) { log("Aisles jammed — customers grumble.", "warn"); AudioSys.anger(); }
       }
 
-      let rate = deptRate("sales", sales.level, 0.55) * (0.75 + G.satisfaction / 250);
+      // Slightly tempered so one shipper can usually keep up at start
+      let rate = deptRate("sales", sales.level, 0.45) * (0.7 + G.satisfaction / 280);
       if (G.departments.manager.salesBoost > 0) {
-        rate += 2.2;
+        rate += 1.4; // rush spike — this is when shipping falls behind
         G.departments.manager.salesBoost = Math.max(0, G.departments.manager.salesBoost - t);
       }
       sales.progress += rate * t;
@@ -1205,13 +1334,24 @@
         G.customersServed++;
         G.flags.sold = true;
 
-        G.pendingShip.push({ productId: chosen.id, qty: 1, value: remainder, fullPrice: chosen.price, age: 0 });
-        G.departments.shipping.backlog++;
-        G.departments.shipping.queue = Math.min(G.departments.shipping.queueCap, G.departments.shipping.queue + 1);
+        // Every sale becomes a real shipping job (size slows packing)
+        G.pendingShip.push({
+          productId: chosen.id,
+          qty: 1,
+          value: remainder,
+          fullPrice: chosen.price,
+          age: 0,
+          workLeft: shipWorkFor(chosen.id),
+        });
+        syncShipQueue();
 
         spawnPackageFlow("stock", "sales", 1);
         spawnPackageFlow("sales", "shipping", 1);
         spawnFloater(deptCenter("sales").x, deptCenter("sales").y, fmt$(immediate), "#7dffa8");
+        // Only call out the bay once it's actually getting heavy
+        if (G.pendingShip.length >= 6 && G.pendingShip.length % 3 === 0) {
+          spawnFloater(deptCenter("shipping").x, deptCenter("shipping").y, "📦+" + G.pendingShip.length, "#e0a33a");
+        }
         spawnWalker("customer");
         if (Math.random() < 0.35) AudioSys.cash();
 
@@ -1234,38 +1374,60 @@
       }
     }
 
-    // Shipping finishes packages → remaining cash + happiness
+    // Shipping — slower than a busy sales floor; backlog is the point
     {
       const d = G.departments.shipping;
       if (d.progress == null) d.progress = 0;
-      const rate = deptRate("shipping", d.level, 0.65); // slightly faster than sales so backlog drains
+      // Busier store (more sales skill / boost) does NOT speed shipping —
+      // only ship staff + bay level do. So hot days create piles of boxes.
+      let rate = shippingRate();
+      // Mild overload only when well past bay capacity
+      if (G.pendingShip.length > d.queueCap + 2) {
+        rate *= 0.88;
+      }
       d.progress += rate * t;
-      let guard = 25;
-      while (d.progress >= 1 && G.pendingShip.length && guard-- > 0) {
-        const job = G.pendingShip.shift();
-        d.queue = Math.max(0, d.queue - 1);
-        d.backlog = Math.max(0, d.backlog - 1);
-        d.progress -= 1;
+
+      let guard = 20;
+      while (G.pendingShip.length && d.progress > 0 && guard-- > 0) {
+        const job = G.pendingShip[0];
+        if (job.workLeft == null) job.workLeft = shipWorkFor(job.productId);
+        const step = Math.min(job.workLeft, d.progress);
+        job.workLeft -= step;
+        d.progress -= step;
+        if (job.workLeft > 0.001) break; // still packing this carton
+
+        // Package done
+        G.pendingShip.shift();
         if (job.value > 0) {
           G.cash += job.value;
           G.totalRevenue += job.value;
           revenueWindow.push({ t: G.time, v: job.value });
         }
-        G.satisfaction = Math.min(100, G.satisfaction + 0.2);
-        if (Math.random() < 0.4) AudioSys.cash();
+        G.satisfaction = Math.min(100, G.satisfaction + 0.12);
+        if (Math.random() < 0.35) AudioSys.cash();
         spawnPackageFlow("shipping", "out", 1);
         spawnFloater(deptCenter("shipping").x, deptCenter("shipping").y, "📦 " + fmt$(job.fullPrice || job.value), "#4da3ff");
         spawnSpark(deptCenter("shipping").x, deptCenter("shipping").y, "#4da3ff");
       }
-      if (!G.pendingShip.length) d.progress = Math.min(d.progress, 0.95);
+      if (!G.pendingShip.length) d.progress = Math.min(d.progress, 0.4);
+      syncShipQueue();
 
+      // Aging backlog — gentle at first, mean only when truly jammed
+      const over = Math.max(0, G.pendingShip.length - d.queueCap);
       for (const job of G.pendingShip) {
         job.age += t;
-        if (job.age > 30) G.satisfaction = Math.max(0, G.satisfaction - 0.03 * t);
+        if (job.age > 28) G.satisfaction = Math.max(0, G.satisfaction - 0.035 * t);
+        if (job.age > 50) G.satisfaction = Math.max(0, G.satisfaction - 0.05 * t);
       }
-      if (G.pendingShip.length > d.queueCap) {
-        G.satisfaction = Math.max(0, G.satisfaction - 0.1 * t);
-        if (Math.random() < 0.003 * t) { log("Shipping bottleneck!", "warn"); AudioSys.anger(); }
+      if (over > 0) {
+        G.satisfaction = Math.max(0, G.satisfaction - 0.07 * t * (1 + over * 0.1));
+        if (Math.random() < 0.004 * t) {
+          log("Shipping bottleneck — packages piling up! Hire help or upgrade the bay.", "warn");
+          AudioSys.anger();
+          henrySay("bad");
+        }
+      } else if (G.pendingShip.length >= 7 && Math.random() < 0.002 * t) {
+        log("Ship bay getting busy (" + G.pendingShip.length + " packages waiting).", "warn");
       }
     }
 
@@ -1289,7 +1451,7 @@
       // Things going wrong
       if (G.satisfaction < 45) henrySay("bad");
       else if (clutter > 0.92) henrySay("bad");
-      else if (shipQ > G.departments.shipping.queueCap * 0.9) henrySay("bad");
+      else if (shipQ >= 8) henrySay("bad");
       else if (dockQ > G.departments.receiving.queueCap * 0.85) henrySay("bad");
       else if (stockUnits < 4 && G.onOrder.length === 0) henrySay("bad");
       else if (G.cash < 250) henrySay("bad");
@@ -1639,7 +1801,11 @@
     if (key === "receiving") return d.queue / Math.max(1, d.queueCap);
     if (key === "stock") return totalInventoryUnits() / Math.max(1, stockCap());
     if (key === "sales") return d.customers / Math.max(1, d.queueCap);
-    if (key === "shipping") return G.pendingShip.length / Math.max(1, d.queueCap);
+    // Heat: green while clearing; orange mid; red near/over capacity
+    if (key === "shipping") {
+      const n = G.pendingShip.length;
+      return clamp(n / Math.max(1, d.queueCap), 0, 1.2);
+    }
     if (key === "manager") return G.departments.manager.salesBoost > 0 ? 1 : 1 - G.satisfaction / 100;
     return 0;
   }
@@ -1720,16 +1886,29 @@
         ctx.fillRect(sx + 12, y + 53, 4, 4);
       }
     } else if (key === "shipping") {
-      label = `Ship ${G.pendingShip.length}`;
-      color = heat > 0.85 ? "#ff5d57" : "#e0a33a";
-      const n = Math.min(10, G.pendingShip.length);
+      const nWait = G.pendingShip.length;
+      const cap = d.queueCap;
+      label = nWait === 0 ? "Ship bay clear" : `BACKLOG ${nWait}/${cap}`;
+      color = heat > 0.85 ? "#ff5d57" : heat > 0.45 ? "#e0a33a" : "#3dd68c";
+      // Pile of boxes grows with real backlog (up to 18 drawn)
+      const n = Math.min(18, nWait);
       for (let i = 0; i < n; i++) {
-        const px = x + 10 + (i % 3) * 20;
-        const py = y + 42 + Math.floor(i / 3) * 16 + Math.sin(animT * 5 + i) * 1;
-        ctx.fillStyle = "#c4a35a";
+        const col = i % 4;
+        const row = Math.floor(i / 4);
+        const px = x + 10 + col * 18 + (row % 2) * 4;
+        const py = y + 40 + row * 14 + Math.sin(animT * 4 + i) * 1.2;
+        ctx.fillStyle = heat > 0.8 ? "#d98b3a" : "#c4a35a";
         roundRect(ctx, px, py, 14, 11, 2); ctx.fill();
         ctx.strokeStyle = "#8b6914";
         ctx.strokeRect(px + 1, py + 1, 12, 9);
+      }
+      // Busy badge only when truly stacked
+      if (nWait >= 7) {
+        ctx.fillStyle = "rgba(255,93,87,0.9)";
+        roundRect(ctx, x + dw - 54, y + 32, 46, 14, 4); ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 9px sans-serif";
+        ctx.fillText("BUSY", x + dw - 44, y + 42);
       }
     } else {
       label = G.departments.manager.salesBoost > 0 ? "ON FLOOR!" : `Happy ${G.satisfaction | 0}%`;
@@ -1862,7 +2041,7 @@
     $("#st-sold").textContent = String(G.totalSold);
     $("#st-size").textContent = STORE_TIERS[G.storeTier].name;
     $("#footer-status").textContent =
-      `${!gameStarted ? "Waiting to start" : G.paused ? "Paused" : G.speed + "x"} · Inv ${totalInventoryUnits()}/${stockCap()} · Staff ${staffCount()}/${STORE_TIERS[G.storeTier].maxStaff} · 73`;
+      `${!gameStarted ? "Waiting to start" : G.paused ? "Paused" : G.speed + "x"} · Inv ${totalInventoryUnits()}/${stockCap()} · Staff ${staffCount()}/${maxStaffSlots()} · 73`;
 
     // pipeline hud
     const setPipe = (id, val, max) => {
@@ -1878,7 +2057,8 @@
     setPipe("dock", G.departments.receiving.queue, G.departments.receiving.queueCap);
     setPipe("stock", totalInventoryUnits(), stockCap());
     setPipe("cust", G.departments.sales.customers, G.departments.sales.queueCap);
-    setPipe("ship", G.pendingShip.length, G.departments.shipping.queueCap);
+    // Pipeline uses a soft scale so early backlog is visible (not only at cap)
+    setPipe("ship", G.pendingShip.length, Math.max(6, G.departments.shipping.queueCap));
   }
 
   function meter(label, val, max, color) {
@@ -1914,7 +2094,7 @@
       receiving: "Trucks unload here. Hire Stephany so pallets move into stock.",
       stock: "Shelf capacity. Over 85% full = angry customers. Expand when full.",
       sales: "Customers buy here. Hire/train sales. Empty shelves lose sales.",
-      shipping: "Packages become cash only after shipping. Hire Dave.",
+      shipping: "Every sale becomes a package. Busy floor = deeper backlog. Hire shippers & upgrade the bay.",
       manager: "Henry works the floor on slow days and drops country wisdom when things get wild.",
     };
     const d = G.departments[key];
@@ -1929,8 +2109,13 @@
       meters = meter("Customers waiting", d.customers, d.queueCap, d.customers / d.queueCap > 0.85 ? "red" : "purple");
       meters += `<p>Skill <b>${roleSkill("sales").toFixed(2)}</b> · Today <span class="price">${fmt$(d.salesToday)}</span></p>`;
     } else if (key === "shipping") {
-      meters = meter("Packages waiting", G.pendingShip.length, d.queueCap, G.pendingShip.length / d.queueCap > 0.85 ? "red" : "orange");
-      meters += `<p>Skill <b>${roleSkill("shipping").toFixed(2)}</b></p>`;
+      const n = G.pendingShip.length;
+      meters = meter("Package backlog", n, d.queueCap, n / d.queueCap > 0.85 ? "red" : n >= 5 ? "orange" : "green");
+      meters += meter("Ship speed (work/sec)", shippingRate(), 4, "orange");
+      meters += `<p>Staff skill <b>${roleSkill("shipping").toFixed(2)}</b> · ${G.staff.shipping.length} shipper(s). Dave can handle a normal day; rush sales need more help. Over ${d.queueCap} packages hurts happiness.</p>`;
+      if (n >= 7) {
+        meters += `<p class="chip bad">Bay is busy — hire help or upgrade Shipping</p>`;
+      }
     } else {
       meters = meter("Satisfaction", G.satisfaction, 100, G.satisfaction < 40 ? "red" : G.satisfaction < 70 ? "orange" : "green");
       meters += meter("Reputation", G.reputation, 100, "purple");
@@ -1948,7 +2133,7 @@
           <span>Ship</span><span class="arrow">→</span>
           <span class="price">Cash</span>
         </div>
-        <p style="margin-top:8px"><b>75% of each sale hits Cash right away</b>; the rest clears when packages ship (see Outgoing). Red bars = bottleneck.</p>
+        <p style="margin-top:8px"><b>75% cash on sale</b>; packages stack in <b>Shipping</b>. A busy sales floor will bury one shipper — hire more and upgrade the bay.</p>
       </div>
       <div class="section-title">Suggested now</div>
       <div class="card">
@@ -1978,36 +2163,37 @@
   }
 
   function renderStaff() {
+    ensureStaffShape();
     const el = $("#tab-staff");
-    let html = `<div class="section-title">Team (${staffCount()}/${STORE_TIERS[G.storeTier].maxStaff})</div>
-      <div class="card"><p>Daily wages <span class="cost">${fmt$(wagesPerDay())}</span> · Hire ≈ 3× daily wage. You already start with Stephany, Peter, and Dave — hire more to scale.</p></div>`;
-
-    // recommended hires first
-    html += `<div class="section-title">Core team</div>`;
-    const recs = [
-      { role: "receiving", id: "stephany" },
-      { role: "sales", id: "peter" },
-      { role: "shipping", id: "dave" },
-    ];
-    for (const r of recs) {
-      const p = STAFF_POOL[r.role].find(x => x.id === r.id);
-      const hired = G.staff[r.role].some(s => s.id === r.id);
-      const cost = p.wage * 3;
-      html += `<div class="card ${hired ? "" : ""}">
-        <h3>${p.name} · ${r.role} ${hired ? '<span class="chip good">Hired</span>' : '<span class="chip warn">Needed</span>'}</h3>
-        <p>${p.blurb} · skill ${p.skill} · ${fmt$(cost)} hire</p>
-        <div class="row"><button type="button" class="primary small ${hired ? "" : "glow"}" data-act="hire" data-role="${r.role}" data-id="${p.id}" ${hired ? "disabled" : ""}>${hired ? "On team" : "Hire " + p.name}</button></div>
+    const cap = maxStaffSlots();
+    const used = staffCount();
+    const free = staffSlotsFree();
+    let html = `<div class="section-title">Team (${used}/${cap})</div>
+      <div class="card">
+        <p>Daily wages <span class="cost">${fmt$(wagesPerDay())}</span> · Hire cost ≈ 3× daily wage · <b>${free} open slot${free === 1 ? "" : "s"}</b></p>
+        ${free <= 0 ? `<p class="chip bad">Building full — Expand on the Grow tab before hiring</p>
+          <div class="row"><button type="button" class="primary small" data-act="tab" data-tab="expand">Open Grow</button></div>` : ""}
       </div>`;
+
+    // Shipping applicants first when bay is busy (so they aren't buried)
+    const shipBusy = G.pendingShip.length >= 5;
+    if (shipBusy) {
+      html += `<div class="section-title">Shipping help needed</div>
+        <div class="card"><p>Bay has <b>${G.pendingShip.length}</b> packages waiting. Hire below.</p></div>`;
     }
 
-    for (const role of ["manager", "receiving", "sales", "shipping"]) {
-      html += `<div class="section-title">${role}</div>`;
-      for (const s of G.staff[role]) {
+    for (const role of ["shipping", "receiving", "sales", "manager"]) {
+      html += `<div class="section-title">${role}${role === "shipping" && shipBusy ? " ★" : ""}</div>`;
+      const list = G.staff[role] || [];
+      if (!list.length && role !== "manager") {
+        html += `<div class="card"><p>No ${role} staff — hire someone!</p></div>`;
+      }
+      for (const s of list) {
         const trainCost = Math.floor(80 * s.train * (role === "sales" ? 1.2 : 1));
         html += `<div class="card">
           <h3><span class="person"><span class="staff-avatar" style="background:${roleColor(role)}">${s.name[0]}</span>${s.name}</span>
-            <span class="chip good">×${s.train.toFixed(2)}</span></h3>
-          <p>Effective skill ${(s.skill * s.train).toFixed(2)} · ${fmt$(s.wage)}/day</p>
+            <span class="chip good">×${(s.train || 1).toFixed(2)}</span></h3>
+          <p>Effective skill ${((s.skill || 1) * (s.train || 1)).toFixed(2)} · ${fmt$(s.wage || 0)}/day</p>
           <div class="row">
             ${role !== "manager"
               ? `<button type="button" class="small" data-act="train" data-role="${role}" data-id="${s.id}">Train (${fmt$(trainCost)})</button>
@@ -2018,12 +2204,24 @@
       }
       if (role !== "manager") {
         for (const p of STAFF_POOL[role]) {
-          if (G.staff[role].some(s => s.id === p.id)) continue;
-          if (["stephany", "peter", "dave"].includes(p.id)) continue;
-          const cost = p.wage * 3;
+          if (list.some(s => s.id === p.id)) continue;
+          const cost = Math.floor(p.wage * 3);
+          const blockedCap = free <= 0;
+          const blockedCash = G.cash < cost;
+          const disabled = blockedCap || blockedCash;
+          let why = "Hire";
+          if (blockedCap) why = "Need expand";
+          else if (blockedCash) why = "Need " + fmt$(cost);
           html += `<div class="prod-row">
-            <div><div class="name">${p.name}</div><div class="sub">${p.blurb} · ${fmt$(cost)}</div></div>
-            <div class="acts"><button type="button" class="small primary" data-act="hire" data-role="${role}" data-id="${p.id}">Hire</button></div>
+            <div>
+              <div class="name">${p.name}</div>
+              <div class="sub">${p.blurb} · skill ${p.skill} · hire ${fmt$(cost)} · ${fmt$(p.wage)}/day</div>
+            </div>
+            <div class="acts">
+              <button type="button" class="small primary ${role === "shipping" && shipBusy && !disabled ? "glow" : ""}"
+                data-act="hire" data-role="${role}" data-id="${p.id}"
+                ${disabled ? "disabled" : ""}>${why}</button>
+            </div>
           </div>`;
         }
       }
@@ -2044,13 +2242,7 @@
         <div class="row">
           <button type="button" class="primary small glow" data-act="restock">Quick restock low SKUs</button>
         </div>
-      </div>
-      <div class="section-title">Suppliers</div>
-      <div class="supplier-wrap">`;
-    for (const s of SUPPLIERS) {
-      html += `<span class="chip" style="border-color:${s.color};color:${s.color}">${s.name}</span>`;
-    }
-    html += `</div>`;
+      </div>`;
 
     const cats = [...new Set(PRODUCTS.map(p => p.cat))];
     for (const cat of cats) {
@@ -2101,12 +2293,6 @@
         ${meter("En route", prog * 100, 100, "green")}
       </div>`;
     }
-    html += `<div class="section-title">Suppliers (scroll inside box)</div>
-      <div class="supplier-wrap" style="max-height:120px">`;
-    for (const s of SUPPLIERS) {
-      html += `<span class="chip" style="border-color:${s.color};color:${s.color}" title="Lead ~${s.lead}s · rel ${(s.reliability * 100) | 0}%">${s.name}</span>`;
-    }
-    html += `</div>`;
     el.innerHTML = html;
   }
 
@@ -2151,7 +2337,9 @@
   }
 
   function handlePanelAction(btn) {
-    if (!btn?.dataset?.act || btn.disabled) return;
+    if (!btn?.dataset?.act) return;
+    // disabled buttons shouldn't fire, but guard anyway
+    if (btn.disabled || btn.getAttribute("disabled") !== null) return;
     const act = btn.dataset.act;
     if (act === "upgrade-dept") upgradeDept(btn.dataset.dept);
     else if (act === "hire") hireStaff(btn.dataset.role, btn.dataset.id);
@@ -2173,9 +2361,10 @@
   }
 
   document.querySelector("aside").addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-act], [data-act]");
+    const btn = e.target.closest("button[data-act]");
     if (!btn || !btn.dataset.act) return;
     e.preventDefault();
+    e.stopPropagation();
     handlePanelAction(btn);
   });
 
@@ -2305,6 +2494,7 @@
 
   function boot() {
     resize();
+    ensureStaffShape();
     // Deep starter shelves so early sales don't die instantly
     G.inventory.ic7300 = 3;
     G.inventory.ft891 = 4;
