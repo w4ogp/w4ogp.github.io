@@ -485,7 +485,7 @@
       { id: "nina", name: "Nina", skill: 1.12, wage: 46, blurb: "Antenna consultant." },
     ],
     receiving: [
-      { id: "stephany", name: "Stephany", skill: 1.15, wage: 42, blurb: "Best first hire — dock ace." },
+      { id: "stephanie", name: "Stephanie", skill: 1.15, wage: 42, blurb: "Best first hire — dock ace." },
       { id: "bob", name: "Bob", skill: 1.0, wage: 38, blurb: "Pallet jack pro." },
       { id: "alice", name: "Alice", skill: 1.08, wage: 40, blurb: "Barcode ninja." },
       { id: "frank", name: "Frank", skill: 0.95, wage: 36, blurb: "Careful unpacker." },
@@ -596,7 +596,7 @@
         manager: [{ id: "henry", name: "Henry", role: "manager", skill: 1.15, train: 1, wage: 70 }],
         // Starter crew so cash can flow immediately
         sales: [{ id: "peter", name: "Peter", role: "sales", skill: 1.05, train: 1, wage: 44 }],
-        receiving: [{ id: "stephany", name: "Stephany", role: "receiving", skill: 1.1, train: 1, wage: 42 }],
+        receiving: [{ id: "stephanie", name: "Stephanie", role: "receiving", skill: 1.1, train: 1, wage: 42 }],
         shipping: [{ id: "dave", name: "Dave", role: "shipping", skill: 1.08, train: 1, wage: 42 }],
       },
       inventory: inv,
@@ -609,7 +609,7 @@
       log: [],
       tutorialStep: 0,
       flags: { hiredRecv: true, hiredSales: true, hiredShip: true, ordered: false, sold: false },
-      stephanyJokeDay: 0,
+      stephanieJokeDay: 0,
     };
   }
 
@@ -764,7 +764,7 @@
     if (mood !== "good") spawnWalker("henry");
   }
 
-  // Stephany's rotating dad jokes — one per game day while she's on payroll
+  // Stephanie's rotating dad jokes — one per game day while she's on payroll
   const STEPHANY_JOKES = [
     "I only know 25 letters of the alphabet. I don't know Y.",
     "What do you call a fake noodle? An impasta!",
@@ -808,22 +808,22 @@
     "Singing in the shower is fun until you get soap in your mouth. Then it's a soap opera.",
   ];
 
-  function stephanyOnDuty() {
+  function stephanieOnDuty() {
     ensureStaffShape();
-    return (G.staff.receiving || []).some(s => s.id === "stephany");
+    return (G.staff.receiving || []).some(s => s.id === "stephanie");
   }
 
-  function stephanyJokeForDay(day) {
+  function stephanieJokeForDay(day) {
     const d = Math.max(1, day | 0);
     return STEPHANY_JOKES[(d - 1) % STEPHANY_JOKES.length];
   }
 
-  function stephanyDailyJoke(force = false) {
-    if (!stephanyOnDuty()) return;
-    if (!force && G.stephanyJokeDay === G.day) return;
-    G.stephanyJokeDay = G.day;
-    const joke = stephanyJokeForDay(G.day);
-    const line = "Stephany (Receiving): \"" + joke + "\"";
+  function stephanieDailyJoke(force = false) {
+    if (!stephanieOnDuty()) return;
+    if (!force && G.stephanieJokeDay === G.day) return;
+    G.stephanieJokeDay = G.day;
+    const joke = stephanieJokeForDay(G.day);
+    const line = "Stephanie (Receiving): \"" + joke + "\"";
     toast(line, 5200);
     log(line, "info");
     try { AudioSys.click(); } catch (_) {}
@@ -895,6 +895,13 @@
     if (!G.staff.manager.some(s => s.id === "henry")) {
       G.staff.manager.unshift({ id: "henry", name: "Henry", role: "manager", skill: 1.2, train: 1, wage: 60 });
     }
+    // Rename legacy "stephany" saves → Stephanie
+    for (const s of G.staff.receiving) {
+      if (s && (s.id === "stephany" || s.name === "Stephany")) {
+        s.id = "stephanie";
+        s.name = "Stephanie";
+      }
+    }
   }
 
   function staffCount() {
@@ -951,7 +958,7 @@
       return {
         id: "start",
         goal: "Click Start Selling to open the store",
-        why: "You already have Stephany, Peter, and Dave on the team. Start and watch cash roll in.",
+        why: "You already have Stephanie, Peter, and Dave on the team. Start and watch cash roll in.",
         cta: "Open welcome",
         action: () => showModal(WELCOME_HTML),
         checks: [
@@ -966,10 +973,10 @@
     if (recvStaff === 0) {
       return {
         id: "hire-recv",
-        goal: "Hire Stephany in Receiving",
+        goal: "Hire Stephanie in Receiving",
         why: "Trucks dump gear on the dock. Without receiving staff, stock never reaches the floor.",
-        cta: "Hire Stephany",
-        action: () => { setTab("staff"); renderPanels(true); hireStaff("receiving", "stephany"); },
+        cta: "Hire Stephanie",
+        action: () => { setTab("staff"); renderPanels(true); hireStaff("receiving", "stephanie"); },
         tab: "staff",
         checks: buildChecks(),
       };
@@ -1170,10 +1177,10 @@
         const c = deptCenter(role === "manager" ? "manager" : role);
         spawnSpark(c.x, c.y, "#3dd68c");
       } catch (_) {}
-      // Re-hired Stephany immediately drops today's groaner
-      if (role === "receiving" && personId === "stephany") {
-        G.stephanyJokeDay = 0;
-        setTimeout(() => stephanyDailyJoke(true), 900);
+      // Re-hired Stephanie immediately drops today's groaner
+      if (role === "receiving" && personId === "stephanie") {
+        G.stephanieJokeDay = 0;
+        setTimeout(() => stephanieDailyJoke(true), 900);
       }
       markPanelDirty();
       return true;
@@ -1391,7 +1398,7 @@
       if (G.totalRevenue > 150000) G.unlockLevel = Math.max(G.unlockLevel, 4);
       if (G.totalRevenue > 380000) G.unlockLevel = Math.max(G.unlockLevel, 5);
       // New day, new dad joke from the dock
-      stephanyDailyJoke(true);
+      stephanieDailyJoke(true);
     }
 
     // Arrivals
@@ -2344,7 +2351,7 @@
       shipping: "Shipping Bay", manager: "Henry's Office",
     };
     const tips = {
-      receiving: "Trucks unload here. Stephany runs the dock — and a new dad joke every day.",
+      receiving: "Trucks unload here. Stephanie runs the dock — and a new dad joke every day.",
       stock: "Shelf capacity. Over 85% full = angry customers. Expand when full.",
       sales: "Customers buy here. Hire/train sales. Empty shelves lose sales.",
       shipping: "Every sale becomes a package. Busy floor = deeper backlog. Hire shippers & upgrade the bay.",
@@ -2355,10 +2362,10 @@
     if (key === "receiving") {
       meters = meter("Dock queue", d.queue, d.queueCap, d.queue / d.queueCap > 0.85 ? "red" : "green");
       meters += `<p>Skill <b>${roleSkill("receiving").toFixed(2)}</b> · Staff ${G.staff.receiving.length}</p>`;
-      if (stephanyOnDuty()) {
+      if (stephanieOnDuty()) {
         meters += `<div class="card" style="margin-top:8px;margin-bottom:0;border-color:#3dd68c">
-          <h3 style="font-size:0.8rem">Stephany's dad joke · Day ${G.day}</h3>
-          <p style="color:var(--text)">“${stephanyJokeForDay(G.day)}”</p>
+          <h3 style="font-size:0.8rem">Stephanie's dad joke · Day ${G.day}</h3>
+          <p style="color:var(--text)">“${stephanieJokeForDay(G.day)}”</p>
         </div>`;
       }
     } else if (key === "stock") {
@@ -2665,7 +2672,7 @@
       <span>Ship rest</span>
     </div>
     <ol>
-      <li>You start with <b>Stephany, Peter, Dave</b> and <b>$6,500</b> — watch wages and restock carefully.</li>
+      <li>You start with <b>Stephanie, Peter, Dave</b> and <b>$6,500</b> — watch wages and restock carefully.</li>
       <li><b>Quick restock</b> when shelves run low (keep under ~82% full).</li>
       <li>Hire more staff and upgrade rooms when lines turn red.</li>
       <li><b>Outgoing</b> is the remaining sale cash waiting on packages.</li>
@@ -2701,12 +2708,12 @@
       centerStoreView();
     });
     try { AudioSys.resume(); AudioSys.setEnabled(true); AudioSys.startAmbient(); AudioSys.cw("73"); } catch (_) {}
-    log("Doors open at Ham Radio Outlet. Stephany, Peter, and Dave are on duty!", "good");
+    log("Doors open at Ham Radio Outlet. Stephanie, Peter, and Dave are on duty!", "good");
     toast("Henry: \"Welcome to the Outlet — let's sell some radios, y'all!\"");
     // seed ambient walkers
     for (let i = 0; i < 4; i++) spawnWalker("customer");
-    // Stephany opens with today's dad joke (slight delay so Henry's line shows first)
-    setTimeout(() => stephanyDailyJoke(true), 2800);
+    // Stephanie opens with today's dad joke (slight delay so Henry's line shows first)
+    setTimeout(() => stephanieDailyJoke(true), 2800);
     markPanelDirty();
     renderPanels(true);
     updateStats();
