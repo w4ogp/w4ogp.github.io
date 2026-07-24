@@ -332,7 +332,7 @@ body {
   <script>
 /**
  * Web Audio synthesizer for Frogger-style SFX.
- * No external assets required.
+ * No external assets required. Hardened for Safari/Chrome autoplay policies.
  */
 class FroggerAudio {
   constructor() {
@@ -340,106 +340,141 @@ class FroggerAudio {
     this.master = null;
     this.muted = false;
     this.ambientNodes = null;
+    this.volume = 0.5;
   }
 
   ensure() {
-    if (this.ctx) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    this.ctx = new AC();
-    this.master = this.ctx.createGain();
-    this.master.gain.value = 0.4;
-    this.master.connect(this.ctx.destination);
+    if (this.ctx) return true;
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      this.ctx = new AC();
+      this.master = this.ctx.createGain();
+      this.master.gain.value = this.muted ? 0 : this.volume;
+      this.master.connect(this.ctx.destination);
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
+  /** Unlock/resume the AudioContext (must run from a user gesture when possible). */
   async resume() {
-    this.ensure();
+    if (!this.ensure()) return;
     if (this.ctx.state === "suspended") {
-      await this.ctx.resume();
+      try {
+        await this.ctx.resume();
+      } catch (_) {
+        /* ignore */
+      }
+    }
+  }
+
+  /** Sync best-effort unlock so SFX work even if await was skipped. */
+  unlock() {
+    if (!this.ensure()) return;
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume().catch(() => {});
     }
   }
 
   setMuted(muted) {
-    this.muted = muted;
+    this.muted = !!muted;
     if (!this.master) return;
-    this.master.gain.value = muted ? 0 : 0.4;
-    if (muted) this.stopAmbient();
+    this.master.gain.value = this.muted ? 0 : this.volume;
+    if (this.muted) this.stopAmbient();
   }
 
   toggleMute() {
     this.setMuted(!this.muted);
+    if (!this.muted) this.unlock();
     return this.muted;
   }
 
   now() {
-    this.ensure();
+    if (!this.ensure()) return 0;
+    this.unlock();
     return this.ctx.currentTime;
   }
 
-  tone(freq, start, duration, type = "square", gain = 0.08, slideTo = null) {
-    if (this.muted) return;
-    this.ensure();
-    const osc = this.ctx.createOscillator();
-    const g = this.ctx.createGain();
-    osc.type = type;
-    osc.frequency.setValueAtTime(freq, start);
-    if (slideTo != null) {
-      osc.frequency.linearRampToValueAtTime(slideTo, start + duration);
+  tone(freq, when, duration, type = "square", gain = 0.08, slideTo = null) {
+    if (this.muted || !this.ensure() || !this.master) return;
+    this.unlock();
+    try {
+      const t0 = Math.max(when || 0, this.ctx.currentTime + 0.001);
+      const dur = Math.max(0.03, duration);
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t0);
+      if (slideTo != null) {
+        osc.frequency.linearRampToValueAtTime(slideTo, t0 + dur);
+      }
+      // Linear ramps are more reliable than exponential across browsers
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(gain, t0 + Math.min(0.02, dur * 0.25));
+      g.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+      osc.connect(g);
+      g.connect(this.master);
+      osc.start(t0);
+      osc.stop(t0 + dur + 0.03);
+    } catch (_) {
+      /* never let SFX crash gameplay */
     }
-    g.gain.setValueAtTime(0.0001, start);
-    g.gain.exponentialRampToValueAtTime(gain, start + 0.01);
-    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    osc.connect(g);
-    g.connect(this.master);
-    osc.start(start);
-    osc.stop(start + duration + 0.02);
   }
 
-  noiseBurst(start, duration, gain = 0.06, filterFreq = 1200) {
-    if (this.muted) return;
-    this.ensure();
-    const sampleRate = this.ctx.sampleRate;
-    const length = Math.max(1, Math.floor(sampleRate * duration));
-    const buffer = this.ctx.createBuffer(1, length, sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < length; i++) {
-      data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+  noiseBurst(when, duration, gain = 0.06, filterFreq = 1200) {
+    if (this.muted || !this.ensure() || !this.master) return;
+    this.unlock();
+    try {
+      const t0 = Math.max(when || 0, this.ctx.currentTime + 0.001);
+      const dur = Math.max(0.04, duration);
+      const sampleRate = this.ctx.sampleRate;
+      const length = Math.max(1, Math.floor(sampleRate * dur));
+      const buffer = this.ctx.createBuffer(1, length, sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < length; i++) {
+        data[i] = (Math.random() * 2 - 1) * (1 - i / length);
+      }
+      const src = this.ctx.createBufferSource();
+      src.buffer = buffer;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = filterFreq;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(gain, t0);
+      g.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+      src.connect(filter);
+      filter.connect(g);
+      g.connect(this.master);
+      src.start(t0);
+      src.stop(t0 + dur + 0.03);
+    } catch (_) {
+      /* ignore */
     }
-    const src = this.ctx.createBufferSource();
-    src.buffer = buffer;
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = filterFreq;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(gain, start);
-    g.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-    src.connect(filter);
-    filter.connect(g);
-    g.connect(this.master);
-    src.start(start);
-    src.stop(start + duration + 0.02);
   }
 
   hop() {
     if (this.muted) return;
     const t = this.now();
-    this.tone(320, t, 0.06, "square", 0.07, 520);
-    this.tone(480, t + 0.04, 0.05, "triangle", 0.04, 700);
+    this.tone(320, t, 0.07, "square", 0.1, 520);
+    this.tone(480, t + 0.04, 0.06, "triangle", 0.06, 700);
   }
 
   splash() {
     if (this.muted) return;
     const t = this.now();
-    this.noiseBurst(t, 0.28, 0.1, 900);
-    this.tone(180, t, 0.18, "sine", 0.06, 60);
-    this.tone(90, t + 0.05, 0.2, "triangle", 0.04, 40);
+    this.noiseBurst(t, 0.28, 0.12, 900);
+    this.tone(180, t, 0.18, "sine", 0.08, 60);
+    this.tone(90, t + 0.05, 0.2, "triangle", 0.05, 40);
   }
 
   squash() {
     if (this.muted) return;
     const t = this.now();
-    this.tone(140, t, 0.12, "sawtooth", 0.09, 40);
-    this.noiseBurst(t, 0.16, 0.08, 600);
-    this.tone(80, t + 0.08, 0.2, "square", 0.05, 30);
+    this.tone(140, t, 0.12, "sawtooth", 0.12, 40);
+    this.noiseBurst(t, 0.16, 0.1, 600);
+    this.tone(80, t + 0.08, 0.2, "square", 0.07, 30);
   }
 
   home() {
@@ -447,8 +482,8 @@ class FroggerAudio {
     const t = this.now();
     const notes = [523.25, 659.25, 783.99, 1046.5];
     notes.forEach((f, i) => {
-      this.tone(f, t + i * 0.08, 0.14, "square", 0.07);
-      this.tone(f * 2, t + i * 0.08, 0.1, "triangle", 0.03);
+      this.tone(f, t + i * 0.08, 0.14, "square", 0.09);
+      this.tone(f * 2, t + i * 0.08, 0.1, "triangle", 0.04);
     });
   }
 
@@ -457,22 +492,22 @@ class FroggerAudio {
     const t = this.now();
     const notes = [392, 493.88, 587.33, 784, 987.77];
     notes.forEach((f, i) => {
-      this.tone(f, t + i * 0.09, 0.16, "square", 0.07);
+      this.tone(f, t + i * 0.09, 0.16, "square", 0.09);
     });
   }
 
   timeWarning() {
     if (this.muted) return;
     const t = this.now();
-    this.tone(880, t, 0.08, "square", 0.05);
-    this.tone(660, t + 0.1, 0.08, "square", 0.05);
+    this.tone(880, t, 0.08, "square", 0.07);
+    this.tone(660, t + 0.1, 0.08, "square", 0.07);
   }
 
   death() {
     if (this.muted) return;
     const t = this.now();
-    this.tone(400, t, 0.15, "square", 0.07, 180);
-    this.tone(220, t + 0.12, 0.22, "sawtooth", 0.06, 80);
+    this.tone(400, t, 0.15, "square", 0.09, 180);
+    this.tone(220, t + 0.12, 0.22, "sawtooth", 0.08, 80);
   }
 
   gameOver() {
@@ -480,7 +515,7 @@ class FroggerAudio {
     const t = this.now();
     const notes = [392, 349.23, 293.66, 246.94, 196];
     notes.forEach((f, i) => {
-      this.tone(f, t + i * 0.14, 0.2, "square", 0.07);
+      this.tone(f, t + i * 0.14, 0.2, "square", 0.09);
     });
   }
 
@@ -489,47 +524,50 @@ class FroggerAudio {
     const t = this.now();
     const notes = [330, 392, 523.25, 659.25];
     notes.forEach((f, i) => {
-      this.tone(f, t + i * 0.1, 0.14, "square", 0.06);
+      this.tone(f, t + i * 0.1, 0.14, "square", 0.08);
     });
   }
 
   startAmbient() {
-    if (this.muted) return;
-    this.ensure();
+    if (this.muted || !this.ensure()) return;
+    this.unlock();
     this.stopAmbient();
+    try {
+      const t = this.ctx.currentTime;
+      const noiseBuf = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
 
-    const t = this.now();
-    const noiseBuf = this.ctx.createBuffer(1, this.ctx.sampleRate * 2, this.ctx.sampleRate);
-    const data = noiseBuf.getChannelData(0);
-    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+      const src = this.ctx.createBufferSource();
+      src.buffer = noiseBuf;
+      src.loop = true;
 
-    const src = this.ctx.createBufferSource();
-    src.buffer = noiseBuf;
-    src.loop = true;
+      const filter = this.ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = 220;
+      filter.Q.value = 0.6;
 
-    const filter = this.ctx.createBiquadFilter();
-    filter.type = "bandpass";
-    filter.frequency.value = 220;
-    filter.Q.value = 0.6;
+      const g = this.ctx.createGain();
+      g.gain.value = 0.015;
 
-    const g = this.ctx.createGain();
-    g.gain.value = 0.012;
+      const lfo = this.ctx.createOscillator();
+      const lfoGain = this.ctx.createGain();
+      lfo.type = "sine";
+      lfo.frequency.value = 0.12;
+      lfoGain.gain.value = 40;
+      lfo.connect(lfoGain);
+      lfoGain.connect(filter.frequency);
 
-    const lfo = this.ctx.createOscillator();
-    const lfoGain = this.ctx.createGain();
-    lfo.type = "sine";
-    lfo.frequency.value = 0.12;
-    lfoGain.gain.value = 40;
-    lfo.connect(lfoGain);
-    lfoGain.connect(filter.frequency);
+      src.connect(filter);
+      filter.connect(g);
+      g.connect(this.master);
+      src.start(t);
+      lfo.start(t);
 
-    src.connect(filter);
-    filter.connect(g);
-    g.connect(this.master);
-    src.start(t);
-    lfo.start(t);
-
-    this.ambientNodes = { src, lfo, g };
+      this.ambientNodes = { src, lfo, g };
+    } catch (_) {
+      this.ambientNodes = null;
+    }
   }
 
   stopAmbient() {
@@ -565,7 +603,7 @@ class FroggerAudio {
 
   const HOME_SLOTS = [1, 3, 5, 7, 9]; // column centers for pads
   const START_LIVES = 3;
-  const BASE_TIME = 45; // seconds
+  const BASE_TIME = 55; // seconds (level 1 is generous; later levels tighten)
 
   const canvas = document.getElementById("game");
   const ctx = canvas.getContext("2d");
@@ -611,7 +649,22 @@ class FroggerAudio {
   };
 
   function speedScale() {
-    return 1 + (state.level - 1) * 0.12;
+    // Level 1 starts slow (~0.7x), then ramps past the old baseline
+    return 0.7 + (state.level - 1) * 0.14;
+  }
+
+  /** Extra road spacing / slower top-lane traffic on early levels */
+  function roadEase() {
+    if (state.level <= 1) return { gap: 1.1, fastLane: 0.72 };
+    if (state.level === 2) return { gap: 0.45, fastLane: 0.88 };
+    return { gap: 0, fastLane: 1 };
+  }
+
+  /** River: longer platforms, tighter gaps, no diving on level 1 */
+  function riverEase() {
+    if (state.level <= 1) return { len: 0.6, gap: -0.7, dive: false, speed: 0.85 };
+    if (state.level === 2) return { len: 0.25, gap: -0.25, dive: true, speed: 0.95 };
+    return { len: 0, gap: 0, dive: true, speed: 1 };
   }
 
   function makeFrog() {
@@ -633,23 +686,25 @@ class FroggerAudio {
 
   function vehicleDefs(level) {
     const s = speedScale();
+    const ease = roadEase();
     // row, dir (+1 right / -1 left), speed px/s, length tiles, gap tiles, color, kind
     return [
-      { row: 11, dir: 1, speed: 55 * s, len: 1.1, gap: 3.2, color: "#ff4d4d", kind: "car" },
-      { row: 10, dir: -1, speed: 70 * s, len: 1.3, gap: 3.5, color: "#4db8ff", kind: "car" },
-      { row: 9, dir: 1, speed: 48 * s, len: 2.2, gap: 4.2, color: "#ffcc33", kind: "truck" },
-      { row: 8, dir: -1, speed: 90 * s, len: 1.0, gap: 2.8, color: "#c77dff", kind: "car" },
+      { row: 11, dir: 1, speed: 48 * s, len: 1.1, gap: 3.2 + ease.gap, color: "#ff4d4d", kind: "car" },
+      { row: 10, dir: -1, speed: 58 * s, len: 1.3, gap: 3.5 + ease.gap, color: "#4db8ff", kind: "car" },
+      { row: 9, dir: 1, speed: 42 * s, len: 2.2, gap: 4.2 + ease.gap, color: "#ffcc33", kind: "truck" },
+      { row: 8, dir: -1, speed: 78 * s * ease.fastLane, len: 1.0, gap: 2.8 + ease.gap * 1.2, color: "#c77dff", kind: "car" },
     ];
   }
 
   function floaterDefs(level) {
-    const s = speedScale();
+    const s = speedScale() * riverEase().speed;
+    const ease = riverEase();
     return [
-      { row: 6, dir: -1, speed: 40 * s, len: 3, gap: 2.5, kind: "log", color: "#8b5a2b" },
-      { row: 5, dir: 1, speed: 55 * s, len: 2, gap: 2.2, kind: "turtles", color: "#3d8b5a", dive: true },
-      { row: 4, dir: -1, speed: 35 * s, len: 4, gap: 2.8, kind: "log", color: "#a0673b" },
-      { row: 3, dir: 1, speed: 48 * s, len: 2, gap: 2.5, kind: "turtles", color: "#2f9e6a", dive: true },
-      { row: 2, dir: -1, speed: 62 * s, len: 3, gap: 3.0, kind: "log", color: "#6e4220" },
+      { row: 6, dir: -1, speed: 36 * s, len: 3 + ease.len, gap: 2.5 + ease.gap, kind: "log", color: "#8b5a2b" },
+      { row: 5, dir: 1, speed: 48 * s, len: 2 + ease.len * 0.5, gap: 2.2 + ease.gap, kind: "turtles", color: "#3d8b5a", dive: ease.dive },
+      { row: 4, dir: -1, speed: 32 * s, len: 4 + ease.len, gap: 2.8 + ease.gap, kind: "log", color: "#a0673b" },
+      { row: 3, dir: 1, speed: 42 * s, len: 2 + ease.len * 0.5, gap: 2.5 + ease.gap, kind: "turtles", color: "#2f9e6a", dive: ease.dive && level > 2 },
+      { row: 2, dir: -1, speed: 52 * s, len: 3 + ease.len, gap: 3.0 + ease.gap, kind: "log", color: "#6e4220" },
     ];
   }
 
@@ -744,7 +799,10 @@ class FroggerAudio {
     resetFrog();
     updateHud();
     hideOverlay();
+    // Unlock audio from this click/key press, then play intro SFX
+    audio.unlock();
     audio.resume().then(() => {
+      if (state.mode !== "playing") return;
       audio.startJingle();
       audio.startAmbient();
     });
@@ -851,7 +909,8 @@ class FroggerAudio {
       setHigh(state.score);
       state.level += 1;
       state.homes = [false, false, false, false, false];
-      state.maxTime = Math.max(28, BASE_TIME - (state.level - 1) * 2);
+      // L1: full BASE_TIME; later levels shave a bit more each clear
+      state.maxTime = Math.max(30, BASE_TIME - (state.level - 1) * 4);
       resetLevelEntities();
       audio.levelUp();
       updateHud();
@@ -870,9 +929,11 @@ class FroggerAudio {
       if (e.dir < 0 && e.x + e.w < -TILE) e.x = WIDTH + Math.random() * TILE * 0.5;
 
       if (e.dive) {
-        e.divePhase += dt * (0.9 + state.level * 0.05);
-        // submerged part of the cycle (classic diving turtles)
-        e.submerged = Math.sin(e.divePhase) < -0.35;
+        // Dive cycle slower early; submerge window shorter on lower levels
+        const diveRate = 0.55 + state.level * 0.08;
+        e.divePhase += dt * diveRate;
+        const diveThreshold = state.level <= 2 ? -0.55 : -0.35;
+        e.submerged = Math.sin(e.divePhase) < diveThreshold;
       }
     }
   }
@@ -1430,10 +1491,15 @@ class FroggerAudio {
       return;
     }
 
+    // Any key can unlock Web Audio (browser autoplay policy)
+    audio.unlock();
+
     if (k === "m") {
       const muted = audio.toggleMute();
       el.muteBtn.textContent = muted ? "🔇 Sound Off" : "🔊 Sound On";
-      if (!muted && state.mode === "playing") audio.startAmbient();
+      if (!muted && state.mode === "playing") {
+        audio.resume().then(() => audio.startAmbient());
+      }
       if (muted) audio.stopAmbient();
       return;
     }
@@ -1485,6 +1551,7 @@ class FroggerAudio {
   });
 
   el.startBtn.addEventListener("click", () => {
+    audio.unlock();
     if (state.mode === "paused") {
       pauseToggle();
       return;
@@ -1493,12 +1560,21 @@ class FroggerAudio {
   });
 
   el.muteBtn.addEventListener("click", () => {
+    audio.unlock();
     const muted = audio.toggleMute();
     el.muteBtn.textContent = muted ? "🔇 Sound Off" : "🔊 Sound On";
     if (!muted && state.mode === "playing") {
       audio.resume().then(() => audio.startAmbient());
     } else {
       audio.stopAmbient();
+    }
+  });
+
+  // Extra unlock hooks for pointer / first interaction
+  window.addEventListener("pointerdown", () => audio.unlock(), { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && state.mode === "playing" && !audio.muted) {
+      audio.unlock();
     }
   });
 
