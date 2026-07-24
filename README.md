@@ -1,2 +1,2 @@
 # w4ogp.github.io
-Some stuff
+Just some fun games and other stuff I made with a lot of help from Grok.
