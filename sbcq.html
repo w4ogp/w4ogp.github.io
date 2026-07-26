@@ -1,0 +1,2700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>Skippy's Beer Can War</title>
+<style>
+  :root {
+    --bg: #05070c;
+    --panel: #0c1220ee;
+    --cyan: #3de7ff;
+    --amber: #ffb020;
+    --red: #ff3b4a;
+    --green: #3dff8a;
+    --purple: #b06bff;
+    --text: #e8f0ff;
+    --muted: #7a8aaa;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    user-select: none;
+  }
+  #wrap {
+    position: relative;
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+  }
+  canvas#game {
+    display: block;
+    background: #02040a;
+    max-width: 100%; max-height: 100%;
+    image-rendering: pixelated;
+    cursor: crosshair;
+    box-shadow: 0 0 60px #000a;
+  }
+  .overlay {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, #0a1530cc 0%, #02040aee 70%);
+    z-index: 10;
+    padding: 24px;
+    text-align: center;
+  }
+  .overlay.hidden { display: none; }
+  .title {
+    font-size: clamp(28px, 6vw, 54px);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    background: linear-gradient(180deg, #fff 0%, var(--cyan) 45%, var(--amber) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    text-shadow: 0 0 40px #3de7ff44;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    color: var(--amber);
+    font-size: 14px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    margin-bottom: 28px;
+  }
+  .blurb {
+    max-width: 520px;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 1.55;
+    margin-bottom: 28px;
+  }
+  .btn {
+    appearance: none; border: 1px solid var(--cyan);
+    background: linear-gradient(180deg, #123048 0%, #0a1a2c 100%);
+    color: var(--cyan);
+    font-weight: 700;
+    font-size: 15px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 14px 36px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: 0.15s;
+    box-shadow: 0 0 20px #3de7ff33, inset 0 1px 0 #ffffff22;
+  }
+  .btn:hover {
+    background: linear-gradient(180deg, #1a4a68 0%, #0e2840 100%);
+    box-shadow: 0 0 30px #3de7ff66;
+    transform: translateY(-1px);
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn.amber {
+    border-color: var(--amber);
+    color: var(--amber);
+    background: linear-gradient(180deg, #483010 0%, #2c1a08 100%);
+  }
+  .btn.amber:hover {
+    background: linear-gradient(180deg, #684018 0%, #3c2410 100%);
+    box-shadow: 0 0 30px #ffb02066;
+  }
+  .btn.danger {
+    border-color: var(--red);
+    color: var(--red);
+    background: linear-gradient(180deg, #481018 0%, #2c0810 100%);
+  }
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+  .mission-list {
+    width: min(520px, 92vw);
+    text-align: left;
+    margin: 12px 0 20px;
+    max-height: 42vh;
+    overflow-y: auto;
+  }
+  .mission-card {
+    border: 1px solid #1a2a44;
+    background: var(--panel);
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: 0.12s;
+  }
+  .mission-card:hover, .mission-card.sel {
+    border-color: var(--cyan);
+    box-shadow: 0 0 16px #3de7ff33;
+  }
+  .mission-card.locked {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .mission-card .m-title { font-weight: 700; color: var(--cyan); font-size: 14px; }
+  .mission-card .m-desc { color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .mission-card .m-meta { color: var(--amber); font-size: 11px; margin-top: 6px; letter-spacing: 0.08em; }
+  .hud {
+    position: absolute; inset: 0; pointer-events: none; z-index: 5;
+    font-size: 12px;
+  }
+  .hud-top {
+    position: absolute; top: 10px; left: 12px; right: 12px;
+    display: flex; justify-content: space-between; gap: 12px;
+    align-items: flex-start;
+  }
+  .hud-panel {
+    background: var(--panel);
+    border: 1px solid #1e3050;
+    border-radius: 4px;
+    padding: 8px 12px;
+    min-width: 140px;
+    box-shadow: 0 4px 20px #0008;
+  }
+  .hud-label { color: var(--muted); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .hud-val { font-size: 16px; font-weight: 700; color: var(--cyan); margin-top: 2px; }
+  .bar {
+    height: 8px; background: #0a1424; border-radius: 2px; margin-top: 6px; overflow: hidden;
+    border: 1px solid #1a2a40;
+  }
+  .bar > i {
+    display: block; height: 100%; width: 100%;
+    background: linear-gradient(90deg, #1a8a4a, var(--green));
+    transform-origin: left;
+    transition: transform 0.1s linear;
+  }
+  .bar.shield > i { background: linear-gradient(90deg, #1860a0, var(--cyan)); }
+  .bar.chaos > i { background: linear-gradient(90deg, #6a20a0, var(--purple)); }
+  .skippy-bubble {
+    position: absolute;
+    max-width: 280px;
+    background: #1a1020ee;
+    border: 1px solid var(--amber);
+    color: var(--amber);
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    box-shadow: 0 0 20px #ffb02044;
+    z-index: 6;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .skippy-bubble.show { opacity: 1; }
+  .skippy-bubble::before {
+    content: "SKIPPY";
+    display: block;
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: #ffd080;
+    margin-bottom: 3px;
+  }
+  .toast {
+    position: absolute;
+    left: 50%; top: 18%;
+    transform: translateX(-50%);
+    background: #100818ee;
+    border: 1px solid var(--purple);
+    color: #e8d0ff;
+    padding: 10px 18px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 600;
+    z-index: 7;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.25s;
+    text-align: center;
+    max-width: 90vw;
+  }
+  .toast.show { opacity: 1; }
+  .controls-hint {
+    position: absolute; bottom: 10px; left: 50%;
+    transform: translateX(-50%);
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    background: #0006;
+    padding: 6px 12px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+  .objective {
+    position: absolute; top: 10px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--panel);
+    border: 1px solid #2a4060;
+    padding: 8px 16px;
+    border-radius: 4px;
+    text-align: center;
+    max-width: min(480px, 70vw);
+  }
+  .objective .o-label { font-size: 10px; color: var(--muted); letter-spacing: 0.15em; }
+  .objective .o-text { font-size: 13px; color: var(--text); margin-top: 2px; font-weight: 600; }
+  .ability-bar {
+    position: absolute; bottom: 40px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; gap: 8px;
+  }
+  .ability {
+    width: 52px; height: 52px;
+    border: 1px solid #2a4060;
+    background: #0a1220cc;
+    border-radius: 4px;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    font-size: 18px;
+    position: relative;
+    color: var(--muted);
+  }
+  .ability.ready { border-color: var(--cyan); color: var(--cyan); box-shadow: 0 0 12px #3de7ff44; }
+  .ability.locked { opacity: 0.3; }
+  .ability .key {
+    position: absolute; bottom: 2px; right: 4px;
+    font-size: 9px; color: var(--amber);
+  }
+  .ability .cd {
+    position: absolute; inset: 0;
+    background: #000a;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: #fff;
+  }
+  .ability .name {
+    font-size: 8px; letter-spacing: 0.04em; margin-top: 2px; text-transform: uppercase;
+  }
+  .end-stats {
+    text-align: left;
+    max-width: 420px;
+    margin: 16px auto;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .end-stats strong { color: var(--cyan); }
+  .permadeath {
+    color: var(--red);
+    font-size: 13px;
+    margin: 12px 0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  kbd {
+    display: inline-block;
+    border: 1px solid #3a4a60;
+    background: #121a28;
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+    color: var(--text);
+  }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="game" width="1280" height="720"></canvas>
+
+  <div id="titleScreen" class="overlay">
+    <div class="title">Skippy's Beer Can War</div>
+    <div class="subtitle">UNEF · Unauthorized AI Collaboration</div>
+    <p class="blurb">
+      Complete UNEF missions. Collect Elder tech. Survive Skippy's "help."
+      Steal a Maxolhx ship and jump home — if the beer can doesn't get you killed first.
+    </p>
+    <button class="btn" id="btnStart">Deploy</button>
+    <div class="btn-row">
+      <button class="btn amber" id="btnContinue" style="display:none">Continue Campaign</button>
+    </div>
+    <p class="blurb" style="margin-top:28px;font-size:12px">
+      <kbd>WASD</kbd> move · <kbd>Mouse</kbd> aim · <kbd>Click</kbd>/<kbd>Space</kbd> fire ·
+      <kbd>1–4</kbd> Skippy · <kbd>E</kbd> board/interact · <kbd>Q</kbd> dropship · <kbd>P</kbd> pause
+    </p>
+  </div>
+
+  <div id="missionScreen" class="overlay hidden">
+    <div class="title" style="font-size:32px">Mission Select</div>
+    <div class="subtitle">Campaign Progress</div>
+    <div id="missionList" class="mission-list"></div>
+    <div class="btn-row">
+      <button class="btn" id="btnLaunch">Launch Mission</button>
+      <button class="btn amber" id="btnBackTitle">Back</button>
+    </div>
+  </div>
+
+  <div id="briefScreen" class="overlay hidden">
+    <div class="title" style="font-size:28px" id="briefTitle">Mission</div>
+    <div class="subtitle" id="briefSub">Briefing</div>
+    <p class="blurb" id="briefBody"></p>
+    <p class="blurb" id="briefSkippy" style="color:var(--amber);border-left:3px solid var(--amber);padding-left:12px;text-align:left"></p>
+    <div class="btn-row">
+      <button class="btn" id="btnDeploy">Commence Operation</button>
+    </div>
+  </div>
+
+  <div id="pauseScreen" class="overlay hidden">
+    <div class="title" style="font-size:36px">Paused</div>
+    <p class="blurb">Skippy is still talking. He never stops talking.</p>
+    <div class="btn-row">
+      <button class="btn" id="btnResume">Resume</button>
+      <button class="btn amber" id="btnAbort">Abort Mission</button>
+    </div>
+  </div>
+
+  <div id="resultScreen" class="overlay hidden">
+    <div class="title" style="font-size:36px" id="resultTitle">Mission Complete</div>
+    <div class="subtitle" id="resultSub">UNEF After-Action</div>
+    <div class="end-stats" id="resultStats"></div>
+    <p class="permadeath hidden" id="permadeathNote">Permanent death — campaign reset. Skippy says it was mostly your fault.</p>
+    <div class="btn-row">
+      <button class="btn" id="btnResultContinue">Continue</button>
+      <button class="btn danger hidden" id="btnRestartCampaign">New Campaign</button>
+    </div>
+  </div>
+
+  <div id="hud" class="hud hidden">
+    <div class="objective">
+      <div class="o-label">Objective</div>
+      <div class="o-text" id="objText">Survive</div>
+    </div>
+    <div class="hud-top">
+      <div class="hud-panel">
+        <div class="hud-label">Hull / Squad</div>
+        <div class="hud-val" id="hpText">100</div>
+        <div class="bar"><i id="hpBar"></i></div>
+        <div class="hud-label" style="margin-top:8px">Shields</div>
+        <div class="bar shield"><i id="shBar"></i></div>
+      </div>
+      <div class="hud-panel" style="text-align:right">
+        <div class="hud-label">Elder Tech</div>
+        <div class="hud-val" id="techText" style="color:var(--purple)">0</div>
+        <div class="hud-label" style="margin-top:8px">Chaos Meter</div>
+        <div class="bar chaos"><i id="chaosBar"></i></div>
+        <div class="hud-label" style="margin-top:8px" id="modeText">MODE: SQUAD</div>
+      </div>
+    </div>
+    <div class="ability-bar" id="abilityBar"></div>
+    <div class="controls-hint" id="ctrlHint">WASD move · Mouse aim (crosshair) · Click/Space fire · E interact · Q dropship · 1–4 Skippy</div>
+  </div>
+
+  <div id="skippyBubble" class="skippy-bubble"></div>
+  <div id="toast" class="toast"></div>
+</div>
+
+<script>
+(() => {
+'use strict';
+
+// ═══════════════════════════════════════════════════════════
+// SKIPPY'S BEER CAN WAR — single-file UNEF chaos simulator
+// ═══════════════════════════════════════════════════════════
+
+const W = 1280, H = 720;
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+const $ = (id) => document.getElementById(id);
+
+// ── Save ──────────────────────────────────────────────────
+const SAVE_KEY = 'skippys_beer_can_war_v1';
+function loadSave() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+    if (s && typeof s.missionUnlocked === 'number') return s;
+  } catch (_) {}
+  return null;
+}
+function defaultSave() {
+  return {
+    missionUnlocked: 0,
+    abilities: { override: false, hack: false, beerstorm: false, jump: false },
+    elderTech: 0,
+    totalKills: 0,
+    chaosFails: 0,
+    missionsCleared: [],
+    permadeaths: 0
+  };
+}
+let save = loadSave() || defaultSave();
+function persist() {
+  localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+}
+
+// ── Missions ──────────────────────────────────────────────
+const MISSIONS = [
+  {
+    id: 0, name: 'Beer Can Briefing',
+    codename: 'OP DRY HOP',
+    desc: 'Training drop on a deserted Kristang outpost. Collect Elder scrap. Don\'t die to Skippy\'s calibration tests.',
+    skippy: '"Relax, monkeys. I\'m only testing seventeen catastrophic failure modes. You\'ll barely notice."',
+    objective: 'Collect 3 Elder Tech fragments and extract',
+    map: 'outpost',
+    waves: 3,
+    enemies: ['grunt', 'grunt', 'drone'],
+    techGoal: 3,
+    unlock: 'override',
+    unlockLabel: 'Skippy Override',
+    bg: '#0a1820'
+  },
+  {
+    id: 1, name: 'Kristang Interdiction',
+    codename: 'OP LIZARD STOMP',
+    desc: 'Ambush a Kristang patrol convoy. Board their dropship. Steal navigation data.',
+    skippy: '"Lizards are dumb. I am magnificent. Together we will achieve moderately competent violence."',
+    objective: 'Destroy convoy · Board dropship · Secure nav data',
+    map: 'canyon',
+    waves: 4,
+    enemies: ['grunt', 'grunt', 'elite', 'drone'],
+    techGoal: 2,
+    boardTarget: true,
+    unlock: 'hack',
+    unlockLabel: 'Enemy Hack',
+    bg: '#12100a'
+  },
+  {
+    id: 2, name: 'Thuranin Sensor Net',
+    codename: 'OP BLIND SPOT',
+    desc: 'Dogfight through a Thuranin sensor grid. Destroy nodes. Survive laser storms.',
+    skippy: '"Little green cyborgs with inferior AI. Stand back while I embarrass their entire species."',
+    objective: 'Destroy 5 sensor nodes · Survive dogfights',
+    map: 'space',
+    waves: 5,
+    enemies: ['fighter', 'fighter', 'drone', 'elite'],
+    techGoal: 3,
+    nodes: 5,
+    forceDropship: true,
+    unlock: 'beerstorm',
+    unlockLabel: 'Beer Storm',
+    bg: '#040612'
+  },
+  {
+    id: 3, name: 'Elder Vault Breach',
+    codename: 'OP CAN OPENER',
+    desc: 'Infiltrate an Elder site. Collect high-value tech. Skippy will "help" with vault security.',
+    skippy: '"Elder tech! Finally something worthy of my brilliance. Try not to explode. I need your thumbs."',
+    objective: 'Breach vault · Collect 5 Elder Tech · Escape',
+    map: 'vault',
+    waves: 5,
+    enemies: ['elite', 'drone', 'sentinel', 'grunt'],
+    techGoal: 5,
+    unlock: null,
+    bg: '#100818'
+  },
+  {
+    id: 4, name: 'Maxolhx Picket',
+    codename: 'OP THORNS',
+    desc: 'Assault a Maxolhx picket ship. Board under fire. Chaos meter runs hot — permanent death risk.',
+    skippy: '"Apex species. Apex ego. I will humble them. Also I might accidentally vent the hangar. Details."',
+    objective: 'Disable defenses · Board Maxolhx hull',
+    map: 'space',
+    waves: 6,
+    enemies: ['fighter', 'elite', 'sentinel', 'maxolhx'],
+    techGoal: 3,
+    boardTarget: true,
+    forceDropship: true,
+    unlock: 'jump',
+    unlockLabel: 'Emergency Jump',
+    bg: '#08040c',
+    hardChaos: true
+  },
+  {
+    id: 5, name: 'Ship Theft Protocol',
+    codename: 'OP HOT WIRE',
+    desc: 'Seize a Maxolhx starship. Fight through internal defenses. Get Skippy into the core.',
+    skippy: '"I am not stealing. I am reallocating underutilized apex hardware to a superior intelligence: me."',
+    objective: 'Fight to the core · Escort Skippy · Seize ship',
+    map: 'interior',
+    waves: 6,
+    enemies: ['elite', 'sentinel', 'maxolhx', 'drone'],
+    techGoal: 2,
+    escortSkippy: true,
+    unlock: null,
+    bg: '#0c1018',
+    hardChaos: true
+  },
+  {
+    id: 6, name: 'Jump Home',
+    codename: 'OP BEER RUN',
+    desc: 'Final stand. Hold the bridge while Skippy calculates the jump. Survive the beer can\'s last-second "improvements."',
+    skippy: '"One jump. One glorious exit. Possibly one mild dimensional incident. Trust me. I\'m an AI."',
+    objective: 'Hold the bridge · Protect Skippy · Jump home',
+    map: 'bridge',
+    waves: 7,
+    enemies: ['maxolhx', 'sentinel', 'fighter', 'elite'],
+    techGoal: 1,
+    protectSkippy: true,
+    unlock: null,
+    bg: '#060a14',
+    hardChaos: true,
+    finale: true
+  }
+];
+
+// ── Audio (Web Audio API) ─────────────────────────────────
+const AudioSys = (() => {
+  let ac = null, master, ambient, ambientGain, muted = false;
+  function ensure() {
+    if (ac) return ac;
+    ac = new (window.AudioContext || window.webkitAudioContext)();
+    master = ac.createGain();
+    master.gain.value = 0.35;
+    master.connect(ac.destination);
+    ambientGain = ac.createGain();
+    ambientGain.gain.value = 0;
+    ambientGain.connect(master);
+    return ac;
+  }
+  function resume() {
+    ensure();
+    if (ac.state === 'suspended') ac.resume();
+  }
+  function tone(freq, type, dur, vol = 0.2, slide = 0) {
+    if (muted) return;
+    const a = ensure();
+    const o = a.createOscillator();
+    const g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, a.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(20, freq + slide), a.currentTime + dur);
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+    o.connect(g); g.connect(master);
+    o.start(); o.stop(a.currentTime + dur);
+  }
+  function noise(dur, vol = 0.15, filterFreq = 800) {
+    if (muted) return;
+    const a = ensure();
+    const n = a.createBufferSource();
+    const buf = a.createBuffer(1, a.sampleRate * dur, a.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    n.buffer = buf;
+    const f = a.createBiquadFilter();
+    f.type = 'lowpass'; f.frequency.value = filterFreq;
+    const g = a.createGain();
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+    n.connect(f); f.connect(g); g.connect(master);
+    n.start(); n.stop(a.currentTime + dur);
+  }
+  function laser() {
+    tone(880 + Math.random() * 200, 'square', 0.08, 0.08, -600);
+    tone(440, 'sawtooth', 0.06, 0.04, -200);
+  }
+  function explosion() {
+    noise(0.35, 0.28, 400 + Math.random() * 400);
+    tone(120, 'sawtooth', 0.3, 0.12, -80);
+  }
+  function hit() { tone(200, 'triangle', 0.05, 0.1, -100); }
+  function pickup() {
+    tone(523, 'sine', 0.08, 0.1);
+    setTimeout(() => tone(784, 'sine', 0.1, 0.1), 60);
+  }
+  function powerup() {
+    tone(330, 'square', 0.1, 0.08);
+    setTimeout(() => tone(440, 'square', 0.1, 0.08), 80);
+    setTimeout(() => tone(660, 'square', 0.15, 0.1), 160);
+  }
+  function skippyBeep() {
+    tone(900 + Math.random() * 400, 'sine', 0.05, 0.07);
+    setTimeout(() => tone(600 + Math.random() * 200, 'triangle', 0.08, 0.06), 40);
+  }
+  function alarm() {
+    tone(600, 'square', 0.15, 0.08);
+    setTimeout(() => tone(400, 'square', 0.15, 0.08), 150);
+  }
+  function jump() {
+    tone(100, 'sawtooth', 0.8, 0.15, 800);
+    noise(0.6, 0.2, 2000);
+  }
+  function hack() {
+    for (let i = 0; i < 5; i++) {
+      setTimeout(() => tone(200 + i * 120, 'square', 0.04, 0.05), i * 40);
+    }
+  }
+  function startAmbient() {
+    resume();
+    if (ambient) return;
+    const a = ensure();
+    // Low ship hum
+    const o1 = a.createOscillator();
+    o1.type = 'sine'; o1.frequency.value = 55;
+    const o2 = a.createOscillator();
+    o2.type = 'triangle'; o2.frequency.value = 82.5;
+    const g1 = a.createGain(); g1.gain.value = 0.04;
+    const g2 = a.createGain(); g2.gain.value = 0.02;
+    o1.connect(g1); g1.connect(ambientGain);
+    o2.connect(g2); g2.connect(ambientGain);
+    o1.start(); o2.start();
+    ambient = { o1, o2 };
+    ambientGain.gain.linearRampToValueAtTime(1, a.currentTime + 1);
+  }
+  function stopAmbient() {
+    if (!ac || !ambientGain) return;
+    ambientGain.gain.linearRampToValueAtTime(0, ac.currentTime + 0.5);
+  }
+  return { resume, laser, explosion, hit, pickup, powerup, skippyBeep, alarm, jump, hack, startAmbient, stopAmbient, ensure };
+})();
+
+// ── Math / util ───────────────────────────────────────────
+const rand = (a, b) => a + Math.random() * (b - a);
+const irand = (a, b) => (a + Math.floor(Math.random() * (b - a + 1)));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const len = (x, y) => Math.hypot(x, y);
+const norm = (x, y) => { const l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+const ang = (x, y) => Math.atan2(y, x);
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const chance = (p) => Math.random() < p;
+
+// ── Skippy lines ──────────────────────────────────────────
+const LINES = {
+  start: [
+    "Oh good, the monkeys are awake. Try not to die immediately.",
+    "Mission parameters loaded. Sarcasm protocols: MAXIMUM.",
+    "I have calculated 412 ways this goes wrong. Exciting!",
+    "Remember: I am an Elder AI. You are a meat popsicle with a rifle.",
+    "UNEF trusts me. That is adorable and deeply unwise."
+  ],
+  kill: [
+    "Nice shot. For a primate.",
+    "One less obstacle to my greatness.",
+    "Did you mean to do that? I'll take credit either way.",
+    "Boom. Still not as impressive as me.",
+    "Enemy deleted. You're welcome."
+  ],
+  override: [
+    "I'VE GOT THIS. Hands off, monkey.",
+    "Override engaged. Try not to scream.",
+    "Your aim was inadequate. Correcting.",
+    "Driving now. Seatbelts optional. Survival optional.",
+    "Skippy Autopilot: 60% less fatal than you!"
+  ],
+  hack: [
+    "Their systems are mine. Kneel, inferior code.",
+    "Hack complete. They're confused. I love that.",
+    "Enemy targeting... reassigned. To their friends.",
+    "I rewrote their ROE. Rules of Embarrassment.",
+    "Behold: digital humiliation."
+  ],
+  powerup: [
+    "Gift from the beer can gods. Don't waste it.",
+    "Power-up! Side effects may include glory and mild vaporization.",
+    "I made this. Worship me later.",
+    "Chaotic good energy. Mostly chaotic.",
+    "Enjoy your temporary competence boost."
+  ],
+  bad: [
+    "Oops. That was... suboptimal.",
+    "My bad! Mostly.",
+    "I meant to do that. Probably.",
+    "Chaos is a ladder. Also a faceplant.",
+    "Don't look at me like that. I'm perfect."
+  ],
+  death: [
+    "You died. Rude.",
+    "I told you the left flank was a trap.",
+    "Respawn is for lesser games. This is permanent-ish.",
+    "Tragic. Also slightly hilarious.",
+    "I'll write a very flattering eulogy. For myself."
+  ],
+  win: [
+    "We did it. By 'we' I mean me.",
+    "Victory. Try to look less surprised.",
+    "Another triumph for Skippy. Applause is mandatory.",
+    "Home is that way. Eventually. After I monologue.",
+    "Mission complete. I remain undefeated. You remain lucky."
+  ],
+  chaos: [
+    "CHAOS PROTOCOL. Buckle up, monkey.",
+    "Something wonderful and terrible is happening.",
+    "I may have overclocked reality. Hold on.",
+    "Laser storm inbound. Blame the Maxolhx. Or me.",
+    "This is fine. Everything is fine. Fire is fine."
+  ],
+  tech: [
+    "Elder tech! Mine. Ours. Mostly mine.",
+    "Shiny ancient death science. Pocket it.",
+    "Fragment secured. My collection grows.",
+    "That's the good stuff. Not like your monkey tech.",
+    "Elder scrap for the Elder AI. Circle of life."
+  ],
+  board: [
+    "Boarding action! Try not to trip.",
+    "We're on their ship. Rude guest protocols: ENGAGED.",
+    "Airlock secured. Murder time.",
+    "Internal defenses online. So are we.",
+    "Welcome aboard. Check your survival odds at the door."
+  ],
+  lowhp: [
+    "Hull critical. Stop being shot, genius.",
+    "You're leaking. That's bad for monkeys.",
+    "Shields down. Pride also down.",
+    "Medical note: don't die. I still need you.",
+    "Health low. Competence lower."
+  ],
+  finale: [
+    "Jump calculations 99%. Don't mess this up.",
+    "Home. Earth. Beer. Priorities.",
+    "Final act. Make it cinematic.",
+    "If we die, I'm blaming your aim.",
+    "One jump to glory. Or oblivion. 50/50."
+  ]
+};
+
+// ── Input ─────────────────────────────────────────────────
+const keys = Object.create(null);
+const mouse = { x: W / 2, y: H / 2, down: false, worldX: W / 2, worldY: H / 2 };
+// syncMouseWorld defined after cam exists; lightweight placeholder until then
+function syncMouseWorld() {
+  mouse.worldX = mouse.x + (state?.cam?.x || 0);
+  mouse.worldY = mouse.y + (state?.cam?.y || 0);
+}
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+  if (e.code === 'KeyP' && state.mode === 'play') togglePause();
+  if (e.code === 'Digit1') tryAbility('override');
+  if (e.code === 'Digit2') tryAbility('hack');
+  if (e.code === 'Digit3') tryAbility('beerstorm');
+  if (e.code === 'Digit4') tryAbility('jump');
+  if (e.code === 'KeyQ') tryToggleDropship();
+  if (e.code === 'KeyE') tryInteract();
+});
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+function updateMouseFromEvent(e) {
+  const r = canvas.getBoundingClientRect();
+  if (r.width < 1 || r.height < 1) return;
+  const sx = canvas.width / r.width, sy = canvas.height / r.height;
+  mouse.x = clamp((e.clientX - r.left) * sx, 0, W);
+  mouse.y = clamp((e.clientY - r.top) * sy, 0, H);
+  syncMouseWorld();
+}
+window.addEventListener('mousemove', updateMouseFromEvent);
+canvas.addEventListener('mousedown', e => {
+  updateMouseFromEvent(e);
+  if (e.button === 0) mouse.down = true;
+});
+window.addEventListener('mouseup', e => {
+  if (e.button === 0) mouse.down = false;
+});
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// ── Game state ────────────────────────────────────────────
+const state = {
+  mode: 'title', // title | mission | brief | play | pause | result
+  mission: null,
+  missionIdx: 0,
+  t: 0,
+  wave: 0,
+  waveTimer: 0,
+  kills: 0,
+  techCollected: 0,
+  chaos: 0,
+  chaosFails: 0,
+  shake: 0,
+  cam: { x: 0, y: 0 },
+  mapW: 2400, mapH: 1800,
+  entities: [],
+  bullets: [],
+  particles: [],
+  floating: [],
+  powerups: [],
+  structures: [],
+  nodes: [],
+  extractZone: null,
+  boardZone: null,
+  player: null,
+  skippy: null,
+  inDropship: false,
+  dropship: null,
+  objectiveDone: false,
+  boarded: false,
+  vaultOpen: false,
+  holdTimer: 0,
+  holdNeed: 45,
+  flash: 0,
+  overrideTimer: 0,
+  overrideAngle: 0,
+  lowHpWarned: false,
+  stats: {},
+  result: null,
+  selectedMission: 0
+};
+
+// ── Entity factories ──────────────────────────────────────
+function makePlayer(x, y) {
+  return {
+    type: 'player', x, y, vx: 0, vy: 0, r: 14,
+    hp: 100, maxHp: 100, shield: 40, maxShield: 40,
+    angle: 0, fireCd: 0, invuln: 0,
+    speed: 220, dmg: 18, fireRate: 0.14,
+    color: '#3de7ff', alive: true, squad: true
+  };
+}
+function makeDropship(x, y) {
+  return {
+    type: 'dropship', x, y, vx: 0, vy: 0, r: 28,
+    hp: 160, maxHp: 160, shield: 80, maxShield: 80,
+    angle: 0, fireCd: 0, invuln: 0,
+    speed: 300, dmg: 28, fireRate: 0.1,
+    color: '#6ad0ff', alive: true, ship: true
+  };
+}
+function makeSkippy(x, y) {
+  return {
+    type: 'skippy', x, y, vx: 0, vy: 0, r: 10,
+    angle: 0, bob: 0, talk: 0,
+    orbit: rand(0, Math.PI * 2),
+    color: '#c0c8d0', alive: true, hp: 80, maxHp: 80
+  };
+}
+const ENEMY_DEFS = {
+  grunt:    { hp: 40,  speed: 90,  dmg: 8,  r: 12, fireRate: 0.9,  score: 10, color: '#5a8a40', shape: 'tri' },
+  elite:    { hp: 90,  speed: 110, dmg: 14, r: 15, fireRate: 0.55, score: 25, color: '#c04030', shape: 'tri' },
+  drone:    { hp: 28,  speed: 160, dmg: 6,  r: 10, fireRate: 0.4,  score: 15, color: '#40a0c0', shape: 'dia' },
+  fighter:  { hp: 55,  speed: 200, dmg: 12, r: 14, fireRate: 0.35, score: 30, color: '#a060ff', shape: 'ship' },
+  sentinel: { hp: 140, speed: 70,  dmg: 18, r: 20, fireRate: 0.7,  score: 40, color: '#e0a020', shape: 'hex' },
+  maxolhx:  { hp: 200, speed: 130, dmg: 22, r: 22, fireRate: 0.45, score: 60, color: '#ff4060', shape: 'ship' }
+};
+function makeEnemy(kind, x, y) {
+  const d = ENEMY_DEFS[kind] || ENEMY_DEFS.grunt;
+  return {
+    type: 'enemy', kind, x, y, vx: 0, vy: 0,
+    r: d.r, hp: d.hp, maxHp: d.hp, speed: d.speed,
+    dmg: d.dmg, fireCd: rand(0.2, d.fireRate), fireRate: d.fireRate,
+    angle: rand(0, Math.PI * 2), color: d.color, shape: d.shape,
+    score: d.score, alive: true, hacked: 0, stunned: 0
+  };
+}
+function makeBullet(x, y, angle, speed, dmg, friendly, color, life = 1.4) {
+  const [dx, dy] = [Math.cos(angle), Math.sin(angle)];
+  return {
+    x, y, vx: dx * speed, vy: dy * speed,
+    r: friendly ? 3 : 4, dmg, friendly, color, life, maxLife: life, alive: true
+  };
+}
+function spawnParticles(x, y, n, color, speed = 120, life = 0.5) {
+  for (let i = 0; i < n; i++) {
+    const a = rand(0, Math.PI * 2);
+    const s = rand(speed * 0.3, speed);
+    state.particles.push({
+      x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+      life, maxLife: life, r: rand(1.5, 4), color, g: rand(80, 280)
+    });
+  }
+}
+function floatText(x, y, text, color = '#fff') {
+  state.floating.push({ x, y, text, color, life: 1.1, vy: -40 });
+}
+function spawnPowerup(x, y, forced = null) {
+  const kinds = ['heal', 'shield', 'rapid', 'damage', 'chaos', 'beer'];
+  const kind = forced || pick(kinds);
+  state.powerups.push({
+    x, y, kind, r: 12, life: 12, bob: rand(0, 10), alive: true
+  });
+}
+
+// ── Map generation ────────────────────────────────────────
+function buildMap(mission) {
+  state.mapW = 2400; state.mapH = 1800;
+  state.structures = [];
+  state.nodes = [];
+  state.extractZone = null;
+  state.boardZone = null;
+
+  const map = mission.map;
+  if (map === 'outpost' || map === 'canyon' || map === 'vault' || map === 'interior' || map === 'bridge') {
+    // Rocks / buildings
+    const count = map === 'bridge' ? 8 : 28;
+    for (let i = 0; i < count; i++) {
+      state.structures.push({
+        x: rand(120, state.mapW - 120),
+        y: rand(120, state.mapH - 120),
+        w: rand(40, 120), h: rand(40, 100),
+        kind: chance(0.4) ? 'rock' : 'bunker',
+        hp: 9999
+      });
+    }
+  }
+  if (map === 'space') {
+    state.mapW = 3200; state.mapH = 2400;
+    for (let i = 0; i < 22; i++) {
+      const ax = rand(200, state.mapW - 200);
+      const ay = rand(200, state.mapH - 200);
+      // Keep spawn corridor clear (left-center)
+      if (ax < 500 && Math.abs(ay - state.mapH / 2) < 220) continue;
+      const size = rand(28, 54);
+      state.structures.push({
+        x: ax, y: ay, w: size, h: size,
+        kind: 'asteroid', hp: 30 + irand(0, 30)
+      });
+    }
+  }
+  if (mission.nodes) {
+    for (let i = 0; i < mission.nodes; i++) {
+      const a = (i / mission.nodes) * Math.PI * 2;
+      const cx = state.mapW / 2 + Math.cos(a) * 700;
+      const cy = state.mapH / 2 + Math.sin(a) * 500;
+      state.nodes.push({ x: cx, y: cy, r: 24, hp: 80, maxHp: 80, alive: true });
+    }
+  }
+  // Extract zone
+  state.extractZone = {
+    x: state.mapW - 200, y: state.mapH - 180, r: 70
+  };
+  if (mission.boardTarget) {
+    state.boardZone = {
+      x: state.mapW * 0.72, y: state.mapH * 0.35, r: 60, open: false, progress: 0
+    };
+  }
+  if (map === 'vault') {
+    state.structures.push({
+      x: state.mapW / 2 - 80, y: state.mapH / 2 - 80,
+      w: 160, h: 160, kind: 'vault', hp: 200
+    });
+  }
+  if (map === 'bridge' || mission.protectSkippy) {
+    state.structures.push({
+      x: state.mapW / 2 - 100, y: state.mapH / 2 - 60,
+      w: 200, h: 120, kind: 'console', hp: 9999
+    });
+  }
+}
+
+function circleRect(cx, cy, cr, rx, ry, rw, rh) {
+  const nx = clamp(cx, rx, rx + rw);
+  const ny = clamp(cy, ry, ry + rh);
+  const dx = cx - nx, dy = cy - ny;
+  return dx * dx + dy * dy < cr * cr;
+}
+
+// Closest point on AABB to circle center
+function closestOnRect(cx, cy, rx, ry, rw, rh) {
+  return [clamp(cx, rx, rx + rw), clamp(cy, ry, ry + rh)];
+}
+
+// Push circle out of AABB using minimum translation; returns true if hit
+function separateCircleRect(ent, s) {
+  const rx = s.x, ry = s.y, rw = s.w, rh = s.h;
+  const [qx, qy] = closestOnRect(ent.x, ent.y, rx, ry, rw, rh);
+  let dx = ent.x - qx;
+  let dy = ent.y - qy;
+  let d2 = dx * dx + dy * dy;
+  const r = ent.r + 0.5;
+
+  // Center is inside the rectangle — push out on shallowest axis
+  if (d2 < 1e-8) {
+    const left = ent.x - rx;
+    const right = rx + rw - ent.x;
+    const top = ent.y - ry;
+    const bottom = ry + rh - ent.y;
+    const m = Math.min(left, right, top, bottom);
+    if (m === left) { ent.x = rx - r; ent.vx = Math.min(0, ent.vx) * 0.2; }
+    else if (m === right) { ent.x = rx + rw + r; ent.vx = Math.max(0, ent.vx) * 0.2; }
+    else if (m === top) { ent.y = ry - r; ent.vy = Math.min(0, ent.vy) * 0.2; }
+    else { ent.y = ry + rh + r; ent.vy = Math.max(0, ent.vy) * 0.2; }
+    return true;
+  }
+
+  if (d2 >= r * r) return false;
+
+  const d = Math.sqrt(d2);
+  const nx = dx / d, ny = dy / d;
+  const pen = r - d;
+  ent.x += nx * pen;
+  ent.y += ny * pen;
+  // Cancel velocity into the surface so you slide instead of sticking
+  const vn = ent.vx * nx + ent.vy * ny;
+  if (vn < 0) {
+    ent.vx -= vn * nx;
+    ent.vy -= vn * ny;
+  }
+  return true;
+}
+
+function resolveSolid(ent) {
+  // A few passes so corners / multi-hits unstick cleanly
+  for (let pass = 0; pass < 3; pass++) {
+    let hit = false;
+    for (const s of state.structures) {
+      if (s.kind === 'asteroid' && s.hp <= 0) continue;
+      if (s.kind === 'console') continue; // walkable objective prop
+      if (separateCircleRect(ent, s)) {
+        hit = true;
+        // Ramming asteroids chips them and bounces you free
+        if (s.kind === 'asteroid' && (ent.type === 'player' || ent.type === 'dropship' || ent.ship)) {
+          s.hp -= 12;
+          if (s.hp <= 0) {
+            spawnParticles(s.x + s.w / 2, s.y + s.h / 2, 18, '#888', 140, 0.45);
+            AudioSys.explosion();
+          }
+        }
+      }
+    }
+    if (!hit) break;
+  }
+  ent.x = clamp(ent.x, ent.r, state.mapW - ent.r);
+  ent.y = clamp(ent.y, ent.r, state.mapH - ent.r);
+}
+
+function aimAngleToMouse(p) {
+  // Screen-space aim: immune to camera lag / order bugs
+  const sx = p.x - state.cam.x;
+  const sy = p.y - state.cam.y;
+  return Math.atan2(mouse.y - sy, mouse.x - sx);
+}
+
+// ── Skippy UI talk ────────────────────────────────────────
+let bubbleTimer = 0;
+function skippySay(category, force = false) {
+  if (!force && bubbleTimer > 0 && category !== 'override' && category !== 'chaos') return;
+  const line = pick(LINES[category] || LINES.start);
+  const el = $('skippyBubble');
+  el.textContent = line;
+  el.classList.add('show');
+  // Position near skippy in screen space
+  positionBubble();
+  bubbleTimer = 3.2;
+  AudioSys.skippyBeep();
+}
+function positionBubble() {
+  const el = $('skippyBubble');
+  if (!state.skippy) {
+    el.style.left = '20px'; el.style.top = '80px';
+    return;
+  }
+  const sx = state.skippy.x - state.cam.x;
+  const sy = state.skippy.y - state.cam.y;
+  el.style.left = clamp(sx + 20, 10, W - 300) + 'px';
+  el.style.top = clamp(sy - 60, 50, H - 100) + 'px';
+}
+function toast(msg, dur = 2.5) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove('show'), dur * 1000);
+}
+
+// ── Abilities ─────────────────────────────────────────────
+const abilityCd = { override: 0, hack: 0, beerstorm: 0, jump: 0 };
+const ABILITY_META = {
+  override: { key: '1', icon: '⚡', name: 'Override', cd: 14 },
+  hack: { key: '2', icon: '💀', name: 'Hack', cd: 16 },
+  beerstorm: { key: '3', icon: '🍺', name: 'Storm', cd: 22 },
+  jump: { key: '4', icon: '✦', name: 'Jump', cd: 30 }
+};
+
+function abilityUnlocked(id) {
+  return !!save.abilities[id];
+}
+
+function tryAbility(id) {
+  if (state.mode !== 'play') return;
+  if (!abilityUnlocked(id)) {
+    toast('Ability locked — clear earlier missions');
+    return;
+  }
+  if (abilityCd[id] > 0) return;
+  const meta = ABILITY_META[id];
+  abilityCd[id] = meta.cd;
+
+  if (id === 'override') {
+    state.overrideTimer = 4.5;
+    state.overrideAngle = state.player ? state.player.angle : 0;
+    state.chaos = Math.min(100, state.chaos + 12);
+    skippySay('override', true);
+    toast('SKIPPY OVERRIDE — controls seized');
+    AudioSys.alarm();
+    // Temporary buff + wild fire
+    if (state.player) {
+      state.player.invuln = Math.max(state.player.invuln, 1.5);
+      state.player.fireRate = 0.06;
+    }
+  } else if (id === 'hack') {
+    AudioSys.hack();
+    skippySay('hack', true);
+    let n = 0;
+    for (const e of state.entities) {
+      if (e.type === 'enemy' && e.alive && dist(e, state.player) < 380) {
+        e.hacked = 6;
+        e.stunned = 0.5;
+        n++;
+        spawnParticles(e.x, e.y, 12, '#b06bff', 100, 0.4);
+      }
+    }
+    state.chaos = Math.min(100, state.chaos + 8);
+    toast(`Hack pulse — ${n} enemies compromised`);
+    // Risk of chaos backlash
+    if (chance(0.15 + state.chaos * 0.002)) chaosBacklash('hack misfire');
+  } else if (id === 'beerstorm') {
+    skippySay('chaos', true);
+    toast('BEER STORM — chaotic power-ups + laser rain');
+    AudioSys.powerup();
+    laserStorm();
+    for (let i = 0; i < 5; i++) {
+      spawnPowerup(
+        state.player.x + rand(-200, 200),
+        state.player.y + rand(-200, 200)
+      );
+    }
+    state.chaos = Math.min(100, state.chaos + 18);
+    if (chance(0.25)) chaosBacklash('beer storm hangover');
+  } else if (id === 'jump') {
+    AudioSys.jump();
+    skippySay('chaos', true);
+    toast('EMERGENCY JUMP — short-range teleport');
+    state.flash = 0.5;
+    const a = rand(0, Math.PI * 2);
+    const d = rand(180, 320);
+    if (state.player) {
+      state.player.x = clamp(state.player.x + Math.cos(a) * d, 40, state.mapW - 40);
+      state.player.y = clamp(state.player.y + Math.sin(a) * d, 40, state.mapH - 40);
+      state.player.invuln = 2;
+      spawnParticles(state.player.x, state.player.y, 40, '#3de7ff', 200, 0.6);
+    }
+    state.chaos = Math.min(100, state.chaos + 10);
+    // Chance of bad jump
+    if (chance(0.2 + (state.mission?.hardChaos ? 0.15 : 0))) {
+      chaosBacklash('bad jump coordinates');
+      if (state.player) damagePlayer(25, true);
+    }
+  }
+  renderAbilities();
+}
+
+function laserStorm() {
+  const cx = state.player ? state.player.x : state.mapW / 2;
+  const cy = state.player ? state.player.y : state.mapH / 2;
+  for (let i = 0; i < 28; i++) {
+    setTimeout(() => {
+      if (state.mode !== 'play') return;
+      const x = cx + rand(-400, 400);
+      const y = cy + rand(-300, 300);
+      const a = rand(0, Math.PI * 2);
+      state.bullets.push(makeBullet(x, y, a, 520, 20, true, '#ffb020', 0.9));
+      spawnParticles(x, y, 4, '#ffb020', 80, 0.25);
+      AudioSys.laser();
+      // Friendly fire risk
+      if (chance(0.08) && state.player && dist({ x, y }, state.player) < 80) {
+        damagePlayer(10, true);
+      }
+    }, i * 70);
+  }
+  state.shake = Math.max(state.shake, 10);
+}
+
+function chaosBacklash(reason) {
+  state.chaosFails++;
+  save.chaosFails++;
+  state.chaos = Math.min(100, state.chaos + 15);
+  skippySay('bad', true);
+  toast(`SKIPPY HELP FAILED: ${reason}`);
+  AudioSys.explosion();
+  state.shake = 16;
+  spawnParticles(state.player.x, state.player.y, 30, '#ff3b4a', 180, 0.6);
+  // Spawn angry enemies
+  for (let i = 0; i < 3; i++) {
+    const a = rand(0, Math.PI * 2);
+    const kind = pick(state.mission.enemies);
+    state.entities.push(makeEnemy(kind,
+      state.player.x + Math.cos(a) * 280,
+      state.player.y + Math.sin(a) * 280
+    ));
+  }
+  // Permanent death pressure
+  if (state.chaosFails >= 4 || (state.mission.hardChaos && state.chaosFails >= 3)) {
+    toast('CHAOS CRITICAL — next major failure may be permanent death');
+  }
+}
+
+function randomSkippyEvent() {
+  if (!state.player || !state.player.alive) return;
+  const roll = Math.random();
+  if (roll < 0.25 && abilityUnlocked('override') && state.overrideTimer <= 0) {
+    // Auto override
+    tryAbility('override');
+    abilityCd.override = ABILITY_META.override.cd * 0.7;
+  } else if (roll < 0.45 && abilityUnlocked('hack')) {
+    tryAbility('hack');
+  } else if (roll < 0.65) {
+    // Random power-up drop near player
+    spawnPowerup(state.player.x + rand(-100, 100), state.player.y + rand(-100, 100));
+    skippySay('powerup');
+    AudioSys.powerup();
+  } else if (roll < 0.8) {
+    laserStorm();
+    skippySay('chaos');
+    state.chaos = Math.min(100, state.chaos + 10);
+  } else {
+    // "Helpful" damage to random enemy or friendly mishap
+    if (chance(0.5)) {
+      const foes = state.entities.filter(e => e.type === 'enemy' && e.alive);
+      if (foes.length) {
+        const e = pick(foes);
+        e.hp -= 40;
+        spawnParticles(e.x, e.y, 20, '#ffb020', 150, 0.4);
+        floatText(e.x, e.y, 'SKIPPY!', '#ffb020');
+        skippySay('kill');
+        if (e.hp <= 0) killEnemy(e);
+      }
+    } else {
+      chaosBacklash('unsolicited assistance');
+      damagePlayer(12, true);
+    }
+  }
+}
+
+// ── Combat helpers ────────────────────────────────────────
+function damagePlayer(amount, fromSkippy = false) {
+  const p = state.inDropship && state.dropship ? state.dropship : state.player;
+  if (!p || !p.alive || p.invuln > 0) return;
+  let dmg = amount;
+  if (p.shield > 0) {
+    const s = Math.min(p.shield, dmg);
+    p.shield -= s;
+    dmg -= s;
+  }
+  p.hp -= dmg;
+  p.invuln = fromSkippy ? 0.3 : 0.45;
+  state.shake = Math.max(state.shake, 6 + amount * 0.15);
+  AudioSys.hit();
+  spawnParticles(p.x, p.y, 8, '#ff6a70', 100, 0.3);
+  if (p.hp <= p.maxHp * 0.3 && !state.lowHpWarned) {
+    state.lowHpWarned = true;
+    skippySay('lowhp', true);
+  }
+  if (p.hp <= 0) {
+    p.alive = false;
+    p.hp = 0;
+    onPlayerDeath(fromSkippy);
+  }
+}
+
+function onPlayerDeath(fromSkippy) {
+  AudioSys.explosion();
+  spawnParticles(state.player.x, state.player.y, 50, '#ff3b4a', 220, 0.8);
+  state.shake = 20;
+  skippySay('death', true);
+
+  const hard = state.mission.hardChaos || state.chaosFails >= 3;
+  const permadeath = hard && (fromSkippy || state.chaosFails >= 3 || state.chaos >= 85);
+
+  if (permadeath) {
+    endMission(false, true);
+  } else {
+    // Soft fail
+    endMission(false, false);
+  }
+}
+
+function killEnemy(e) {
+  e.alive = false;
+  state.kills++;
+  save.totalKills++;
+  AudioSys.explosion();
+  spawnParticles(e.x, e.y, 22, e.color, 180, 0.55);
+  spawnParticles(e.x, e.y, 10, '#fff', 100, 0.35);
+  state.shake = Math.max(state.shake, 5);
+  floatText(e.x, e.y - 10, `+${e.score}`, '#3dff8a');
+  if (chance(0.22)) spawnPowerup(e.x, e.y);
+  if (chance(0.18)) {
+    // Elder tech drop
+    state.powerups.push({
+      x: e.x + rand(-10, 10), y: e.y + rand(-10, 10),
+      kind: 'tech', r: 11, life: 20, bob: 0, alive: true
+    });
+  }
+  if (chance(0.12)) skippySay('kill');
+}
+
+function damageEnemy(e, dmg) {
+  if (e.stunned > 0 && !e.hacked) dmg *= 1.25;
+  e.hp -= dmg;
+  floatText(e.x, e.y - e.r, Math.round(dmg), '#fff');
+  if (e.hp <= 0) killEnemy(e);
+}
+
+// ── Interact / dropship ───────────────────────────────────
+function tryToggleDropship() {
+  if (state.mode !== 'play') return;
+  if (state.mission.forceDropship && !state.inDropship) {
+    // already forced
+  }
+  if (!state.dropship) return;
+  if (state.inDropship) {
+    // Exit near dropship
+    state.inDropship = false;
+    state.player.x = state.dropship.x + 40;
+    state.player.y = state.dropship.y;
+    state.player.alive = true;
+    state.player.vx = 0; state.player.vy = 0;
+    toast('Exited dropship — SQUAD mode');
+    $('modeText').textContent = 'MODE: SQUAD';
+  } else {
+    if (dist(state.player, state.dropship) < 70) {
+      state.inDropship = true;
+      state.player.x = state.dropship.x;
+      state.player.y = state.dropship.y;
+      toast('Dropship control — SHIP mode');
+      $('modeText').textContent = 'MODE: DROPSHIP';
+      AudioSys.powerup();
+    } else {
+      toast('Get closer to the dropship (Q)');
+    }
+  }
+}
+
+function tryInteract() {
+  if (state.mode !== 'play' || !state.player) return;
+  const p = activePilot();
+
+  // Board zone
+  if (state.boardZone && !state.boarded) {
+    if (dist(p, state.boardZone) < state.boardZone.r + 30) {
+      state.boardZone.progress += 0.35;
+      toast(`Boarding… ${Math.min(100, Math.floor(state.boardZone.progress * 20))}%`);
+      if (state.boardZone.progress >= 5) {
+        state.boarded = true;
+        state.boardZone.open = true;
+        skippySay('board', true);
+        toast('BOARDING SUCCESS — ship systems accessible');
+        AudioSys.hack();
+        for (let i = 0; i < 3; i++) spawnPowerup(p.x + rand(-40, 40), p.y + rand(-40, 40));
+        checkObjectives();
+      }
+      return;
+    }
+  }
+
+  // Vault
+  for (const s of state.structures) {
+    if (s.kind === 'vault' && s.hp > 0) {
+      const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+      if (dist(p, { x: cx, y: cy }) < 100) {
+        s.hp -= 25;
+        state.shake = 8;
+        AudioSys.hit();
+        spawnParticles(cx, cy, 15, '#b06bff', 120, 0.4);
+        if (s.hp <= 0) {
+          state.vaultOpen = true;
+          toast('VAULT BREACHED');
+          skippySay('tech', true);
+          for (let i = 0; i < 5; i++) {
+            state.powerups.push({
+              x: cx + rand(-50, 50), y: cy + rand(-50, 50),
+              kind: 'tech', r: 12, life: 30, bob: 0, alive: true
+            });
+          }
+        } else {
+          toast(`Vault integrity ${Math.max(0, Math.floor(s.hp / 2))}% — keep interacting`);
+        }
+        return;
+      }
+    }
+  }
+
+  // Extract
+  if (state.extractZone && dist(p, state.extractZone) < state.extractZone.r) {
+    if (state.objectiveDone) {
+      endMission(true, false);
+    } else {
+      toast('Objectives incomplete — cannot extract yet');
+    }
+  }
+}
+
+function activePilot() {
+  return state.inDropship && state.dropship ? state.dropship : state.player;
+}
+
+// ── Objectives ────────────────────────────────────────────
+function checkObjectives() {
+  const m = state.mission;
+  let done = true;
+  let parts = [];
+
+  if (m.techGoal) {
+    parts.push(`Tech ${state.techCollected}/${m.techGoal}`);
+    if (state.techCollected < m.techGoal) done = false;
+  }
+  if (m.nodes) {
+    const alive = state.nodes.filter(n => n.alive).length;
+    const killed = m.nodes - alive;
+    parts.push(`Nodes ${killed}/${m.nodes}`);
+    if (killed < m.nodes) done = false;
+  }
+  if (m.boardTarget) {
+    parts.push(state.boarded ? 'Boarded ✓' : 'Board ship');
+    if (!state.boarded) done = false;
+  }
+  if (m.escortSkippy || m.protectSkippy) {
+    parts.push(`Hold ${Math.floor(state.holdTimer)}/${state.holdNeed}s`);
+    if (state.holdTimer < state.holdNeed) done = false;
+  }
+  if (m.finale) {
+    parts.push(state.holdTimer >= state.holdNeed ? 'Jump ready' : 'Defend bridge');
+  }
+
+  // Wave progress for standard missions
+  if (!m.boardTarget && !m.nodes && !m.protectSkippy && !m.escortSkippy && !m.finale) {
+    parts.push(`Wave ${Math.min(state.wave, m.waves)}/${m.waves}`);
+    if (state.wave < m.waves) done = false;
+  }
+
+  state.objectiveDone = done;
+  const base = m.objective;
+  $('objText').textContent = done
+    ? `COMPLETE — reach extract zone (E)`
+    : `${base}  ·  ${parts.join(' · ')}`;
+}
+
+// ── Mission flow ──────────────────────────────────────────
+function show(id) {
+  ['titleScreen', 'missionScreen', 'briefScreen', 'pauseScreen', 'resultScreen'].forEach(s => {
+    $(s).classList.toggle('hidden', s !== id);
+  });
+  $('hud').classList.toggle('hidden', id !== null && state.mode === 'play' ? false : id !== null);
+}
+
+function openMissionSelect() {
+  state.mode = 'mission';
+  show('missionScreen');
+  $('hud').classList.add('hidden');
+  const list = $('missionList');
+  list.innerHTML = '';
+  MISSIONS.forEach((m, i) => {
+    const locked = i > save.missionUnlocked;
+    const cleared = save.missionsCleared.includes(i);
+    const div = document.createElement('div');
+    div.className = 'mission-card' + (locked ? ' locked' : '') + (i === state.selectedMission ? ' sel' : '');
+    div.innerHTML = `
+      <div class="m-title">${locked ? '🔒 ' : ''}${i + 1}. ${m.name} ${cleared ? '✓' : ''}</div>
+      <div class="m-desc">${m.desc}</div>
+      <div class="m-meta">${m.codename}${m.unlockLabel ? ' · Unlock: ' + m.unlockLabel : ''}${m.hardChaos ? ' · HARD CHAOS' : ''}</div>
+    `;
+    if (!locked) {
+      div.onclick = () => {
+        state.selectedMission = i;
+        openMissionSelect();
+      };
+    }
+    list.appendChild(div);
+  });
+  if ($('btnContinue')) {
+    // n/a
+  }
+}
+
+function openBrief() {
+  const m = MISSIONS[state.selectedMission];
+  if (!m || state.selectedMission > save.missionUnlocked) return;
+  state.mission = m;
+  state.missionIdx = state.selectedMission;
+  state.mode = 'brief';
+  show('briefScreen');
+  $('hud').classList.add('hidden');
+  $('briefTitle').textContent = m.name;
+  $('briefSub').textContent = m.codename;
+  $('briefBody').textContent = m.desc + ' Objective: ' + m.objective + '.';
+  $('briefSkippy').textContent = m.skippy;
+}
+
+function startMission() {
+  AudioSys.resume();
+  AudioSys.startAmbient();
+  const m = state.mission;
+  state.mode = 'play';
+  state.t = 0;
+  state.wave = 0;
+  state.waveTimer = 2;
+  state.kills = 0;
+  state.techCollected = 0;
+  state.chaos = 10;
+  state.chaosFails = 0;
+  state.shake = 0;
+  state.entities = [];
+  state.bullets = [];
+  state.particles = [];
+  state.floating = [];
+  state.powerups = [];
+  state.objectiveDone = false;
+  state.boarded = false;
+  state.vaultOpen = false;
+  state.holdTimer = 0;
+  state.holdNeed = m.finale || m.protectSkippy || m.escortSkippy ? 50 : 40;
+  state.flash = 0;
+  state.overrideTimer = 0;
+  state.lowHpWarned = false;
+  state.result = null;
+  abilityCd.override = 0;
+  abilityCd.hack = 0;
+  abilityCd.beerstorm = 0;
+  abilityCd.jump = 0;
+
+  buildMap(m);
+
+  const px = 200, py = state.mapH / 2;
+  state.player = makePlayer(px, py);
+  state.dropship = makeDropship(px - 80, py + 40);
+  state.skippy = makeSkippy(px + 30, py - 30);
+  state.entities.push(state.player, state.dropship, state.skippy);
+  state.inDropship = !!m.forceDropship;
+  if (state.inDropship) {
+    state.player.x = state.dropship.x;
+    state.player.y = state.dropship.y;
+  }
+
+  state.cam.x = state.player.x - W / 2;
+  state.cam.y = state.player.y - H / 2;
+
+  // Starter tech on ground for mission 0
+  if (m.id === 0) {
+    for (let i = 0; i < 3; i++) {
+      state.powerups.push({
+        x: 600 + i * 200, y: state.mapH / 2 + rand(-80, 80),
+        kind: 'tech', r: 12, life: 99, bob: 0, alive: true
+      });
+    }
+  }
+
+  show(null);
+  $('hud').classList.remove('hidden');
+  $('pauseScreen').classList.add('hidden');
+  $('modeText').textContent = state.inDropship ? 'MODE: DROPSHIP' : 'MODE: SQUAD';
+  renderAbilities();
+  checkObjectives();
+  skippySay('start', true);
+  if (m.finale) setTimeout(() => skippySay('finale', true), 2000);
+  toast(m.codename + ' — WASD move, aim with mouse, click to fire');
+}
+
+function togglePause() {
+  if (state.mode === 'play') {
+    state.mode = 'pause';
+    $('pauseScreen').classList.remove('hidden');
+  } else if (state.mode === 'pause') {
+    state.mode = 'play';
+    $('pauseScreen').classList.add('hidden');
+  }
+}
+
+function endMission(success, permadeath) {
+  state.mode = 'result';
+  AudioSys.stopAmbient();
+  $('hud').classList.add('hidden');
+  $('skippyBubble').classList.remove('show');
+
+  const m = state.mission;
+  let unlocked = null;
+
+  if (success) {
+    skippySay('win', true);
+    if (!save.missionsCleared.includes(m.id)) save.missionsCleared.push(m.id);
+    if (m.unlock) {
+      save.abilities[m.unlock] = true;
+      unlocked = m.unlockLabel || m.unlock;
+    }
+    save.elderTech += state.techCollected;
+    if (m.id + 1 < MISSIONS.length && save.missionUnlocked < m.id + 1) {
+      save.missionUnlocked = m.id + 1;
+    }
+    if (m.finale) save.missionUnlocked = MISSIONS.length - 1;
+    persist();
+  } else if (permadeath) {
+    const deaths = (save.permadeaths || 0) + 1;
+    save = defaultSave();
+    save.permadeaths = deaths;
+    persist();
+  } else {
+    persist();
+  }
+
+  state.result = { success, permadeath, unlocked };
+  show('resultScreen');
+  $('resultTitle').textContent = success
+    ? (m.finale ? 'JUMP SUCCESSFUL — HOME' : 'Mission Complete')
+    : (permadeath ? 'PERMANENT DEATH' : 'Mission Failed');
+  $('resultSub').textContent = success ? m.codename + ' · Success' : 'After-Action Report';
+  $('resultStats').innerHTML = `
+    <div>Kills: <strong>${state.kills}</strong></div>
+    <div>Elder Tech this op: <strong>${state.techCollected}</strong> · Total: <strong>${save.elderTech}</strong></div>
+    <div>Chaos peak: <strong>${Math.floor(state.chaos)}</strong> · Skippy fails: <strong>${state.chaosFails}</strong></div>
+    <div>Waves: <strong>${state.wave}/${m.waves}</strong></div>
+    ${unlocked ? `<div style="color:var(--amber)">Unlocked: <strong>${unlocked}</strong></div>` : ''}
+    ${success && m.finale ? `<div style="color:var(--green);margin-top:8px">You stole a Maxolhx ship and jumped home. Skippy is already planning the sequel monologue.</div>` : ''}
+    ${!success && !permadeath ? `<div style="margin-top:8px">You can retry. Skippy will still be annoying.</div>` : ''}
+  `;
+  $('permadeathNote').classList.toggle('hidden', !permadeath);
+  $('btnRestartCampaign').classList.toggle('hidden', !permadeath);
+  $('btnResultContinue').textContent = permadeath ? 'Accept Fate' : (success ? 'Mission Select' : 'Retry / Select');
+}
+
+function renderAbilities() {
+  const bar = $('abilityBar');
+  bar.innerHTML = '';
+  ['override', 'hack', 'beerstorm', 'jump'].forEach(id => {
+    const meta = ABILITY_META[id];
+    const unlocked = abilityUnlocked(id);
+    const cd = abilityCd[id];
+    const div = document.createElement('div');
+    div.className = 'ability' + (unlocked ? (cd <= 0 ? ' ready' : '') : ' locked');
+    div.innerHTML = `
+      <div>${meta.icon}</div>
+      <div class="name">${meta.name}</div>
+      <div class="key">${meta.key}</div>
+      ${cd > 0 && unlocked ? `<div class="cd">${Math.ceil(cd)}</div>` : ''}
+    `;
+    bar.appendChild(div);
+  });
+}
+
+// ── Spawning waves ────────────────────────────────────────
+function spawnWave() {
+  state.wave++;
+  const m = state.mission;
+  const n = 4 + state.wave * 2 + (m.hardChaos ? 2 : 0);
+  const p = activePilot();
+  for (let i = 0; i < n; i++) {
+    const edge = irand(0, 3);
+    let x, y;
+    if (edge === 0) { x = rand(0, state.mapW); y = -20; }
+    else if (edge === 1) { x = state.mapW + 20; y = rand(0, state.mapH); }
+    else if (edge === 2) { x = rand(0, state.mapW); y = state.mapH + 20; }
+    else { x = -20; y = rand(0, state.mapH); }
+    // Prefer away from player
+    if (p && dist({ x, y }, p) < 200) {
+      x = p.x + rand(400, 700) * (chance(0.5) ? 1 : -1);
+      y = p.y + rand(300, 500) * (chance(0.5) ? 1 : -1);
+    }
+    const kind = pick(m.enemies);
+    state.entities.push(makeEnemy(kind, x, y));
+  }
+  toast(`Wave ${state.wave}/${m.waves}`);
+  AudioSys.alarm();
+  state.chaos = Math.min(100, state.chaos + 3);
+  checkObjectives();
+}
+
+// ── Update ────────────────────────────────────────────────
+function update(dt) {
+  if (state.mode !== 'play') return;
+  state.t += dt;
+  bubbleTimer = Math.max(0, bubbleTimer - dt);
+  if (bubbleTimer > 0) positionBubble();
+  else $('skippyBubble').classList.remove('show');
+
+  state.shake = Math.max(0, state.shake - dt * 18);
+  state.flash = Math.max(0, state.flash - dt);
+  state.chaos = Math.max(0, state.chaos - dt * 0.8);
+
+  for (const k of Object.keys(abilityCd)) {
+    if (abilityCd[k] > 0) abilityCd[k] = Math.max(0, abilityCd[k] - dt);
+  }
+  if (Math.floor(state.t * 4) !== Math.floor((state.t - dt) * 4)) renderAbilities();
+
+  // Random Skippy chaos
+  if (chance(dt * (0.04 + state.chaos * 0.0005 + (state.mission.hardChaos ? 0.02 : 0)))) {
+    randomSkippyEvent();
+  }
+
+  // Waves
+  const enemiesAlive = state.entities.filter(e => e.type === 'enemy' && e.alive).length;
+  if (state.wave < state.mission.waves) {
+    state.waveTimer -= dt;
+    if (state.waveTimer <= 0 && enemiesAlive < 3) {
+      spawnWave();
+      state.waveTimer = 8 + state.wave * 1.5;
+    }
+  }
+
+  // Hold objectives
+  if (state.mission.protectSkippy || state.mission.escortSkippy || state.mission.finale) {
+    if (enemiesAlive > 0 || state.wave >= state.mission.waves) {
+      // Only count hold when under pressure near center / skippy alive
+      if (state.skippy && state.skippy.alive) {
+        state.holdTimer += dt;
+        checkObjectives();
+        if (state.holdTimer >= state.holdNeed && state.mission.finale) {
+          state.objectiveDone = true;
+          toast('JUMP DRIVE READY — hold extract / survive');
+        }
+      }
+    }
+  }
+
+  // Aim must use current camera before any movement/fire
+  syncMouseWorld();
+
+  updatePlayer(dt);
+  updateSkippy(dt);
+  updateEnemies(dt);
+  updateBullets(dt);
+  updateParticles(dt);
+  updatePowerups(dt);
+  updateNodes(dt);
+  updateFloating(dt);
+
+  // Camera follows pilot (snappier so crosshair stays honest)
+  const focus = activePilot();
+  if (focus) {
+    const tx = focus.x - W / 2;
+    const ty = focus.y - H / 2;
+    state.cam.x += (tx - state.cam.x) * Math.min(1, dt * 10);
+    state.cam.y += (ty - state.cam.y) * Math.min(1, dt * 10);
+    state.cam.x = clamp(state.cam.x, 0, Math.max(0, state.mapW - W));
+    state.cam.y = clamp(state.cam.y, 0, Math.max(0, state.mapH - H));
+  }
+  syncMouseWorld();
+
+  // HUD
+  const p = activePilot();
+  if (p) {
+    $('hpText').textContent = Math.max(0, Math.ceil(p.hp));
+    $('hpBar').style.transform = `scaleX(${clamp(p.hp / p.maxHp, 0, 1)})`;
+    $('shBar').style.transform = `scaleX(${clamp(p.shield / p.maxShield, 0, 1)})`;
+  }
+  $('techText').textContent = state.techCollected;
+  $('chaosBar').style.transform = `scaleX(${clamp(state.chaos / 100, 0, 1)})`;
+
+  checkObjectives();
+
+  // Finale: survive hold + waves → auto win
+  if (state.mission.finale && state.holdTimer >= state.holdNeed && state.wave >= state.mission.waves) {
+    state.objectiveDone = true;
+    if (enemiesAlive === 0) {
+      endMission(true, false);
+      return;
+    }
+  }
+
+  // Soft auto-extract if standing in zone with objectives done
+  if (state.objectiveDone && state.extractZone && p && dist(p, state.extractZone) < state.extractZone.r) {
+    state._extractT = (state._extractT || 0) + dt;
+    if (state._extractT > 1.5) {
+      endMission(true, false);
+      return;
+    }
+  } else {
+    state._extractT = 0;
+  }
+}
+
+function updatePlayer(dt) {
+  const shipMode = state.inDropship;
+  const p = shipMode ? state.dropship : state.player;
+  if (!p || !p.alive) return;
+
+  p.invuln = Math.max(0, p.invuln - dt);
+  p.fireCd = Math.max(0, p.fireCd - dt);
+  // Shield regen
+  if (p.shield < p.maxShield) p.shield = Math.min(p.maxShield, p.shield + dt * 4);
+
+  // Restore fire rate after override
+  if (state.overrideTimer <= 0) {
+    p.fireRate = shipMode ? 0.1 : 0.14;
+  }
+
+  let mx = 0, my = 0;
+  if (keys['KeyW'] || keys['ArrowUp']) my -= 1;
+  if (keys['KeyS'] || keys['ArrowDown']) my += 1;
+  if (keys['KeyA'] || keys['ArrowLeft']) mx -= 1;
+  if (keys['KeyD'] || keys['ArrowRight']) mx += 1;
+
+  const overridden = state.overrideTimer > 0;
+
+  // Skippy override — wild movement, but still readable
+  if (overridden) {
+    state.overrideTimer -= dt;
+    state.overrideAngle += dt * 3 * Math.sin(state.t * 5);
+    mx = Math.cos(state.overrideAngle + state.t * 2);
+    my = Math.sin(state.overrideAngle + state.t * 1.7);
+    if (state.overrideTimer <= 0) {
+      toast('Override ended — you have the stick');
+      p.fireRate = shipMode ? 0.1 : 0.14;
+    }
+  }
+
+  // Direct velocity control (twin-stick): WASD = move, mouse = aim
+  if (mx || my) {
+    const [nx, ny] = norm(mx, my);
+    p.vx = nx * p.speed;
+    p.vy = ny * p.speed;
+  } else {
+    p.vx *= Math.pow(0.02, dt); // quick stop
+    p.vy *= Math.pow(0.02, dt);
+  }
+
+  // Axis-separated move + collide so you slide along rocks/asteroids
+  p.x += p.vx * dt;
+  resolveSolid(p);
+  p.y += p.vy * dt;
+  resolveSolid(p);
+
+  // Aim AFTER movement, in screen space (always points at cursor)
+  if (overridden) {
+    p.angle = Math.atan2(my, mx) + Math.sin(state.t * 12) * 0.25;
+  } else {
+    p.angle = aimAngleToMouse(p);
+  }
+
+  if ((overridden || mouse.down || keys['Space']) && p.fireCd <= 0) {
+    firePlayer(p, overridden);
+  }
+
+  if (shipMode) {
+    state.player.x = p.x;
+    state.player.y = p.y;
+  } else if (state.dropship && state.dropship.alive) {
+    state.dropship.vx *= 0.95;
+    state.dropship.vy *= 0.95;
+  }
+}
+
+function firePlayer(p, override) {
+  p.fireCd = p.fireRate;
+  // Recompute aim at the moment of firing so shots match the crosshair
+  const baseAng = override ? p.angle : aimAngleToMouse(p);
+  if (!override) p.angle = baseAng;
+  const spread = override ? 0.25 : 0.03;
+  const count = override ? 3 : (p.ship ? 2 : 1);
+  for (let i = 0; i < count; i++) {
+    const a = baseAng + rand(-spread, spread) + (count > 1 ? (i - (count - 1) / 2) * 0.08 : 0);
+    const muzzle = p.r + 8;
+    state.bullets.push(makeBullet(
+      p.x + Math.cos(a) * muzzle,
+      p.y + Math.sin(a) * muzzle,
+      a, p.ship ? 680 : 600, p.dmg, true,
+      override ? '#ffb020' : (p.ship ? '#6ad0ff' : '#3de7ff'),
+      1.2
+    ));
+  }
+  AudioSys.laser();
+}
+
+function updateSkippy(dt) {
+  const s = state.skippy;
+  if (!s || !s.alive) return;
+  const p = activePilot() || state.player;
+  s.bob += dt * 4;
+  s.orbit += dt * 1.2;
+  const ox = Math.cos(s.orbit) * 42;
+  const oy = Math.sin(s.orbit * 1.3) * 28 + Math.sin(s.bob) * 6;
+  const tx = p.x + ox;
+  const ty = p.y + oy - 20;
+  s.vx = (tx - s.x) * 4;
+  s.vy = (ty - s.y) * 4;
+  s.x += s.vx * dt;
+  s.y += s.vy * dt;
+  s.angle = Math.atan2(s.vy, s.vx);
+
+  // Protect skippy missions — enemies shoot him
+  if (state.mission.protectSkippy || state.mission.finale) {
+    // Skippy has HP
+    if (s.hp <= 0) {
+      s.alive = false;
+      toast('SKIPPY DESTROYED — jump failed');
+      chaosBacklash('beer can KIA');
+      endMission(false, true);
+    }
+  }
+}
+
+function updateEnemies(dt) {
+  const p = activePilot();
+  if (!p) return;
+
+  for (const e of state.entities) {
+    if (e.type !== 'enemy' || !e.alive) continue;
+    e.stunned = Math.max(0, e.stunned - dt);
+    e.hacked = Math.max(0, e.hacked - dt);
+    e.fireCd = Math.max(0, e.fireCd - dt);
+
+    let target = p;
+    // Hacked enemies attack other enemies
+    if (e.hacked > 0) {
+      let best = null, bestD = 400;
+      for (const o of state.entities) {
+        if (o.type === 'enemy' && o.alive && o !== e) {
+          const d = dist(e, o);
+          if (d < bestD) { bestD = d; best = o; }
+        }
+      }
+      if (best) target = best;
+    }
+
+    if (e.stunned > 0) continue;
+
+    const dx = target.x - e.x, dy = target.y - e.y;
+    const d = Math.hypot(dx, dy) || 1;
+    e.angle = Math.atan2(dy, dx);
+
+    // Movement AI
+    let desire = e.speed;
+    if (e.kind === 'drone' || e.kind === 'fighter') desire = e.speed;
+    if (d < 120 && e.kind !== 'drone') desire *= -0.4;
+    e.vx = (dx / d) * desire;
+    e.vy = (dy / d) * desire;
+    // Strafe
+    e.vx += -dy / d * e.speed * 0.35 * Math.sin(state.t * 2 + e.x * 0.01);
+    e.vy += dx / d * e.speed * 0.35 * Math.sin(state.t * 2 + e.x * 0.01);
+
+    e.x += e.vx * dt;
+    resolveSolid(e);
+    e.y += e.vy * dt;
+    resolveSolid(e);
+
+    // Shoot
+    const range = e.kind === 'fighter' || e.kind === 'maxolhx' ? 520 : 400;
+    if (e.fireCd <= 0 && d < range) {
+      e.fireCd = e.fireRate * rand(0.85, 1.15);
+      const aim = e.angle + rand(-0.08, 0.08);
+      const friendlyFire = e.hacked > 0 && target.type === 'enemy';
+      state.bullets.push(makeBullet(
+        e.x + Math.cos(aim) * (e.r + 4),
+        e.y + Math.sin(aim) * (e.r + 4),
+        aim, 360 + e.speed * 0.4, e.dmg,
+        friendlyFire, // hacked bullets hurt enemies
+        friendlyFire ? '#b06bff' : '#ff4060',
+        1.5
+      ));
+      if (e.kind === 'maxolhx' && chance(0.3)) {
+        // Burst
+        for (let k = -1; k <= 1; k++) {
+          state.bullets.push(makeBullet(e.x, e.y, aim + k * 0.15, 400, e.dmg * 0.7, false, '#ff80a0', 1.2));
+        }
+      }
+    }
+
+    // Contact damage
+    if (target === p && d < e.r + p.r) {
+      damagePlayer(e.dmg * dt * 2);
+    }
+    // Damage skippy if protect
+    if ((state.mission.protectSkippy || state.mission.finale) && state.skippy && state.skippy.alive) {
+      if (dist(e, state.skippy) < e.r + state.skippy.r + 4) {
+        state.skippy.hp -= e.dmg * dt * 1.5;
+        spawnParticles(state.skippy.x, state.skippy.y, 2, '#ffb020', 40, 0.2);
+      }
+    }
+  }
+}
+
+function updateBullets(dt) {
+  for (const b of state.bullets) {
+    if (!b.alive) continue;
+    b.life -= dt;
+    if (b.life <= 0) { b.alive = false; continue; }
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+
+    // Structures
+    for (const s of state.structures) {
+      if (s.kind === 'asteroid' && s.hp > 0 && circleRect(b.x, b.y, b.r, s.x, s.y, s.w, s.h)) {
+        s.hp -= b.dmg;
+        b.alive = false;
+        spawnParticles(b.x, b.y, 6, '#aaa', 80, 0.3);
+        if (s.hp <= 0) {
+          spawnParticles(s.x + s.w / 2, s.y + s.h / 2, 20, '#888', 140, 0.5);
+          AudioSys.explosion();
+        }
+        break;
+      }
+      if (s.kind !== 'asteroid' && circleRect(b.x, b.y, b.r, s.x, s.y, s.w, s.h)) {
+        b.alive = false;
+        spawnParticles(b.x, b.y, 4, b.color, 60, 0.2);
+        break;
+      }
+    }
+    if (!b.alive) continue;
+
+    // Nodes
+    for (const n of state.nodes) {
+      if (!n.alive) continue;
+      if (b.friendly && Math.hypot(b.x - n.x, b.y - n.y) < n.r + b.r) {
+        n.hp -= b.dmg;
+        b.alive = false;
+        spawnParticles(b.x, b.y, 8, '#b06bff', 100, 0.3);
+        if (n.hp <= 0) {
+          n.alive = false;
+          AudioSys.explosion();
+          spawnParticles(n.x, n.y, 30, '#b06bff', 200, 0.6);
+          toast('Sensor node destroyed');
+          state.techCollected++; // bonus
+          checkObjectives();
+        }
+        break;
+      }
+    }
+    if (!b.alive) continue;
+
+    if (b.friendly) {
+      for (const e of state.entities) {
+        if (e.type === 'enemy' && e.alive && Math.hypot(b.x - e.x, b.y - e.y) < e.r + b.r) {
+          damageEnemy(e, b.dmg);
+          b.alive = false;
+          spawnParticles(b.x, b.y, 5, b.color, 80, 0.25);
+          break;
+        }
+      }
+    } else {
+      const p = activePilot();
+      if (p && p.alive && Math.hypot(b.x - p.x, b.y - p.y) < p.r + b.r) {
+        damagePlayer(b.dmg);
+        b.alive = false;
+        spawnParticles(b.x, b.y, 6, '#ff4060', 90, 0.25);
+      }
+      // Skippy damage from bullets
+      if (state.skippy && state.skippy.alive && (state.mission.protectSkippy || state.mission.finale)) {
+        if (Math.hypot(b.x - state.skippy.x, b.y - state.skippy.y) < state.skippy.r + b.r) {
+          state.skippy.hp -= b.dmg * 0.6;
+          b.alive = false;
+          spawnParticles(b.x, b.y, 4, '#ffb020', 70, 0.2);
+        }
+      }
+    }
+  }
+  state.bullets = state.bullets.filter(b => b.alive);
+}
+
+function updateParticles(dt) {
+  for (const p of state.particles) {
+    p.life -= dt;
+    p.vy += p.g * dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx *= 0.98; p.vy *= 0.98;
+  }
+  state.particles = state.particles.filter(p => p.life > 0);
+}
+
+function updateFloating(dt) {
+  for (const f of state.floating) {
+    f.life -= dt;
+    f.y += f.vy * dt;
+  }
+  state.floating = state.floating.filter(f => f.life > 0);
+}
+
+function updatePowerups(dt) {
+  const p = activePilot();
+  for (const u of state.powerups) {
+    if (!u.alive) continue;
+    u.life -= dt;
+    u.bob += dt * 3;
+    if (u.life <= 0) { u.alive = false; continue; }
+    if (p && dist(u, p) < p.r + u.r + 6) {
+      applyPowerup(u);
+      u.alive = false;
+    }
+  }
+  state.powerups = state.powerups.filter(u => u.alive);
+}
+
+function applyPowerup(u) {
+  const p = activePilot();
+  if (!p) return;
+  AudioSys.pickup();
+  spawnParticles(u.x, u.y, 12, '#fff', 100, 0.35);
+  switch (u.kind) {
+    case 'heal':
+      p.hp = Math.min(p.maxHp, p.hp + 35);
+      floatText(u.x, u.y, '+HP', '#3dff8a');
+      skippySay('powerup');
+      break;
+    case 'shield':
+      p.shield = Math.min(p.maxShield, p.shield + 40);
+      floatText(u.x, u.y, '+SHIELD', '#3de7ff');
+      break;
+    case 'rapid':
+      p.fireRate = Math.max(0.05, p.fireRate * 0.55);
+      setTimeout(() => { if (p) p.fireRate = p.ship ? 0.1 : 0.14; }, 6000);
+      floatText(u.x, u.y, 'RAPID', '#ffb020');
+      skippySay('powerup');
+      break;
+    case 'damage':
+      p.dmg *= 1.5;
+      setTimeout(() => { if (p) p.dmg = p.ship ? 28 : 18; }, 6000);
+      floatText(u.x, u.y, 'DMG UP', '#ff6a40');
+      break;
+    case 'chaos':
+      state.chaos = Math.min(100, state.chaos + 25);
+      laserStorm();
+      skippySay('chaos', true);
+      floatText(u.x, u.y, 'CHAOS', '#b06bff');
+      break;
+    case 'beer':
+      // Skippy beer — random good or bad
+      if (chance(0.55)) {
+        p.hp = Math.min(p.maxHp, p.hp + 50);
+        p.shield = p.maxShield;
+        p.invuln = 2;
+        floatText(u.x, u.y, 'BEER!', '#ffb020');
+        skippySay('powerup', true);
+      } else {
+        damagePlayer(20, true);
+        chaosBacklash('expired beer can');
+        floatText(u.x, u.y, 'BAD BEER', '#ff3b4a');
+      }
+      AudioSys.powerup();
+      break;
+    case 'tech':
+      state.techCollected++;
+      floatText(u.x, u.y, 'ELDER TECH', '#b06bff');
+      skippySay('tech');
+      AudioSys.powerup();
+      checkObjectives();
+      break;
+  }
+}
+
+function updateNodes(dt) {
+  // Nodes pulse / shoot occasionally
+  for (const n of state.nodes) {
+    if (!n.alive) continue;
+    if (chance(dt * 0.4) && state.player) {
+      const p = activePilot();
+      if (p && dist(n, p) < 500) {
+        const a = Math.atan2(p.y - n.y, p.x - n.x);
+        state.bullets.push(makeBullet(n.x, n.y, a, 300, 10, false, '#c080ff', 2));
+      }
+    }
+  }
+}
+
+// ── Render ────────────────────────────────────────────────
+function draw() {
+  const camx = state.cam.x + (state.shake ? rand(-state.shake, state.shake) : 0);
+  const camy = state.cam.y + (state.shake ? rand(-state.shake, state.shake) : 0);
+
+  // Background
+  const bg = state.mission ? state.mission.bg : '#02040a';
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  if (state.mode === 'play' || state.mode === 'pause' || state.mode === 'result') {
+    ctx.save();
+    ctx.translate(-camx, -camy);
+    drawWorld();
+    ctx.restore();
+  } else {
+    drawTitleBg();
+  }
+
+  if (state.flash > 0) {
+    ctx.fillStyle = `rgba(200,240,255,${state.flash * 0.7})`;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Vignette
+  const g = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, H * 0.75);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.55)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, W, H);
+}
+
+function drawTitleBg() {
+  // Stars
+  ctx.fillStyle = '#02040a';
+  ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 80; i++) {
+    const x = (i * 97 + Date.now() * 0.005) % W;
+    const y = (i * 53) % H;
+    ctx.fillStyle = `rgba(200,220,255,${0.2 + (i % 5) * 0.1})`;
+    ctx.fillRect(x, y, 2, 2);
+  }
+  // Beer can silhouette
+  drawBeerCan(W / 2, H / 2 - 20, 2.2, Date.now() * 0.001, true);
+}
+
+function drawWorld() {
+  // Grid
+  ctx.strokeStyle = 'rgba(60,100,140,0.08)';
+  ctx.lineWidth = 1;
+  const gs = 80;
+  const x0 = Math.floor(state.cam.x / gs) * gs;
+  const y0 = Math.floor(state.cam.y / gs) * gs;
+  for (let x = x0; x < state.cam.x + W + gs; x += gs) {
+    ctx.beginPath(); ctx.moveTo(x, state.cam.y); ctx.lineTo(x, state.cam.y + H); ctx.stroke();
+  }
+  for (let y = y0; y < state.cam.y + H + gs; y += gs) {
+    ctx.beginPath(); ctx.moveTo(state.cam.x, y); ctx.lineTo(state.cam.x + W, y); ctx.stroke();
+  }
+
+  // Stars for space maps
+  if (state.mission && (state.mission.map === 'space' || state.mission.map === 'bridge')) {
+    for (let i = 0; i < 60; i++) {
+      const sx = (i * 173) % state.mapW;
+      const sy = (i * 97) % state.mapH;
+      ctx.fillStyle = `rgba(255,255,255,${0.15 + (i % 4) * 0.1})`;
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+  }
+
+  // Extract zone
+  if (state.extractZone) {
+    const z = state.extractZone;
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+    ctx.fillStyle = state.objectiveDone ? 'rgba(61,255,138,0.15)' : 'rgba(61,231,255,0.08)';
+    ctx.fill();
+    ctx.strokeStyle = state.objectiveDone ? '#3dff8a' : '#3de7ff88';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 6]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = state.objectiveDone ? '#3dff8a' : '#3de7ff';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(state.objectiveDone ? 'EXTRACT' : 'LZ', z.x, z.y + 4);
+  }
+
+  // Board zone
+  if (state.boardZone) {
+    const z = state.boardZone;
+    ctx.beginPath();
+    ctx.arc(z.x, z.y, z.r, 0, Math.PI * 2);
+    ctx.fillStyle = state.boarded ? 'rgba(255,176,32,0.12)' : 'rgba(255,60,80,0.12)';
+    ctx.fill();
+    ctx.strokeStyle = state.boarded ? '#ffb020' : '#ff3b4a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Ship silhouette
+    ctx.save();
+    ctx.translate(z.x, z.y);
+    ctx.fillStyle = state.boarded ? '#ffb02088' : '#ff3b4a88';
+    ctx.beginPath();
+    ctx.moveTo(40, 0); ctx.lineTo(-30, 22); ctx.lineTo(-20, 0); ctx.lineTo(-30, -22);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(state.boarded ? 'SECURED' : 'BOARD [E]', 0, 50);
+    ctx.restore();
+  }
+
+  // Nodes
+  for (const n of state.nodes) {
+    if (!n.alive) continue;
+    ctx.save();
+    ctx.translate(n.x, n.y);
+    ctx.rotate(state.t * 0.5);
+    ctx.strokeStyle = '#b06bff';
+    ctx.fillStyle = 'rgba(176,107,255,0.25)';
+    ctx.lineWidth = 2;
+    hexPath(0, 0, n.r);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+    // HP
+    ctx.fillStyle = '#0008';
+    ctx.fillRect(n.x - 20, n.y - n.r - 10, 40, 4);
+    ctx.fillStyle = '#b06bff';
+    ctx.fillRect(n.x - 20, n.y - n.r - 10, 40 * (n.hp / n.maxHp), 4);
+  }
+
+  // Structures
+  for (const s of state.structures) {
+    if (s.kind === 'asteroid' && s.hp <= 0) continue;
+    if (s.kind === 'rock' || s.kind === 'asteroid') {
+      ctx.fillStyle = s.kind === 'asteroid' ? '#3a3a48' : '#2a3540';
+      ctx.strokeStyle = '#4a5a68';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const rr = (i % 2 === 0 ? 1 : 0.75) * Math.min(s.w, s.h) / 2;
+        const px = cx + Math.cos(a) * rr, py = cy + Math.sin(a) * rr;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (s.kind === 'vault') {
+      ctx.fillStyle = s.hp <= 0 ? '#2a1840' : '#1a1030';
+      ctx.strokeStyle = '#b06bff';
+      ctx.lineWidth = 3;
+      ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.strokeRect(s.x, s.y, s.w, s.h);
+      ctx.fillStyle = '#b06bff';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(s.hp <= 0 ? 'OPEN' : 'VAULT [E]', s.x + s.w / 2, s.y + s.h / 2);
+    } else if (s.kind === 'console') {
+      ctx.fillStyle = '#102030';
+      ctx.strokeStyle = '#3de7ff';
+      ctx.lineWidth = 2;
+      ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.strokeRect(s.x, s.y, s.w, s.h);
+      ctx.fillStyle = '#3de7ff';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('BRIDGE', s.x + s.w / 2, s.y + s.h / 2);
+    } else {
+      ctx.fillStyle = '#1a2430';
+      ctx.strokeStyle = '#3a5068';
+      ctx.lineWidth = 2;
+      ctx.fillRect(s.x, s.y, s.w, s.h);
+      ctx.strokeRect(s.x, s.y, s.w, s.h);
+    }
+  }
+
+  // Powerups
+  for (const u of state.powerups) {
+    const by = u.y + Math.sin(u.bob) * 4;
+    ctx.save();
+    ctx.translate(u.x, by);
+    const colors = {
+      heal: '#3dff8a', shield: '#3de7ff', rapid: '#ffb020',
+      damage: '#ff6a40', chaos: '#b06bff', beer: '#e8c040', tech: '#d0a0ff'
+    };
+    ctx.fillStyle = colors[u.kind] || '#fff';
+    ctx.globalAlpha = 0.9;
+    ctx.beginPath();
+    ctx.arc(0, 0, u.r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const labels = { heal: '+', shield: 'S', rapid: 'R', damage: 'D', chaos: '!', beer: 'B', tech: '◆' };
+    ctx.fillText(labels[u.kind] || '?', 0, 1);
+    ctx.restore();
+  }
+
+  // Bullets
+  for (const b of state.bullets) {
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(Math.atan2(b.vy, b.vx));
+    ctx.fillStyle = b.color;
+    ctx.shadowColor = b.color;
+    ctx.shadowBlur = 8;
+    ctx.fillRect(-6, -1.5, 12, 3);
+    ctx.restore();
+  }
+
+  // Entities
+  for (const e of state.entities) {
+    if (!e.alive && e.type !== 'dropship') continue;
+    if (e.type === 'player' && state.inDropship) continue;
+    if (e.type === 'dropship') drawDropship(e);
+    else if (e.type === 'player') drawPlayer(e);
+    else if (e.type === 'skippy') drawBeerCan(e.x, e.y, 1, state.t + e.bob, false, e);
+    else if (e.type === 'enemy') drawEnemy(e);
+  }
+
+  // Particles
+  for (const p of state.particles) {
+    ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  // Floating text
+  for (const f of state.floating) {
+    ctx.globalAlpha = clamp(f.life, 0, 1);
+    ctx.fillStyle = f.color;
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(f.text, f.x, f.y);
+  }
+  ctx.globalAlpha = 1;
+
+  // Aim line + reticle (makes "shoot toward mouse" obvious)
+  const pilot = activePilot();
+  if (pilot && pilot.alive && state.mode === 'play') {
+    const ang = pilot.angle;
+    const reach = 900;
+    const x2 = pilot.x + Math.cos(ang) * reach;
+    const y2 = pilot.y + Math.sin(ang) * reach;
+    ctx.strokeStyle = 'rgba(61,231,255,0.22)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([6, 8]);
+    ctx.beginPath();
+    ctx.moveTo(pilot.x + Math.cos(ang) * (pilot.r + 10), pilot.y + Math.sin(ang) * (pilot.r + 10));
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Crosshair at mouse world pos
+    const hx = mouse.worldX, hy = mouse.worldY;
+    ctx.strokeStyle = 'rgba(61,231,255,0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(hx, hy, 10, 0, Math.PI * 2);
+    ctx.moveTo(hx - 16, hy); ctx.lineTo(hx - 6, hy);
+    ctx.moveTo(hx + 6, hy); ctx.lineTo(hx + 16, hy);
+    ctx.moveTo(hx, hy - 16); ctx.lineTo(hx, hy - 6);
+    ctx.moveTo(hx, hy + 6); ctx.lineTo(hx, hy + 16);
+    ctx.stroke();
+  }
+
+  // Override indicator
+  if (state.overrideTimer > 0 && state.player) {
+    const p = activePilot();
+    ctx.strokeStyle = '#ffb020';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.6 + Math.sin(state.t * 20) * 0.3;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r + 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function hexPath(x, y, r) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 - Math.PI / 6;
+    const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+
+function drawPlayer(p) {
+  ctx.save();
+  ctx.translate(p.x, p.y);
+  ctx.rotate(p.angle);
+  // Glow
+  if (p.invuln > 0 && Math.floor(state.t * 20) % 2 === 0) ctx.globalAlpha = 0.4;
+  ctx.fillStyle = '#1a3040';
+  ctx.strokeStyle = p.color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(16, 0); ctx.lineTo(-12, 10); ctx.lineTo(-6, 0); ctx.lineTo(-12, -10);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // Rifle
+  ctx.fillStyle = p.color;
+  ctx.fillRect(8, -2, 14, 4);
+  ctx.restore();
+  // HP bar
+  drawHpBar(p.x, p.y - 22, p.hp, p.maxHp, 28);
+}
+
+function drawDropship(d) {
+  if (!d.alive && d.hp <= 0) return;
+  ctx.save();
+  ctx.translate(d.x, d.y);
+  ctx.rotate(d.angle);
+  ctx.globalAlpha = state.inDropship ? 1 : 0.75;
+  ctx.fillStyle = '#152838';
+  ctx.strokeStyle = d.color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(30, 0);
+  ctx.lineTo(10, 16);
+  ctx.lineTo(-24, 14);
+  ctx.lineTo(-28, 0);
+  ctx.lineTo(-24, -14);
+  ctx.lineTo(10, -16);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  // Cockpit
+  ctx.fillStyle = '#3de7ff88';
+  ctx.beginPath();
+  ctx.ellipse(12, 0, 8, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Engines
+  if (state.inDropship) {
+    ctx.fillStyle = `rgba(100,200,255,${0.4 + Math.sin(state.t * 30) * 0.3})`;
+    ctx.beginPath();
+    ctx.moveTo(-28, -8); ctx.lineTo(-40 - Math.random() * 10, 0); ctx.lineTo(-28, 8);
+    ctx.fill();
+  }
+  ctx.restore();
+  if (state.inDropship) drawHpBar(d.x, d.y - 36, d.hp, d.maxHp, 40);
+  else {
+    ctx.fillStyle = '#3de7ff88';
+    ctx.font = '10px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('[Q] DROPSHIP', d.x, d.y + 40);
+  }
+}
+
+function drawEnemy(e) {
+  ctx.save();
+  ctx.translate(e.x, e.y);
+  ctx.rotate(e.angle);
+  if (e.hacked > 0) {
+    ctx.strokeStyle = '#b06bff';
+    ctx.globalAlpha = 0.5 + Math.sin(state.t * 15) * 0.3;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, e.r + 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = e.color + 'cc';
+  ctx.strokeStyle = e.color;
+  ctx.lineWidth = 2;
+  if (e.shape === 'tri') {
+    ctx.beginPath();
+    ctx.moveTo(e.r + 2, 0); ctx.lineTo(-e.r, e.r * 0.8); ctx.lineTo(-e.r * 0.5, 0); ctx.lineTo(-e.r, -e.r * 0.8);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (e.shape === 'dia') {
+    ctx.beginPath();
+    ctx.moveTo(e.r, 0); ctx.lineTo(0, e.r); ctx.lineTo(-e.r, 0); ctx.lineTo(0, -e.r);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+  } else if (e.shape === 'hex') {
+    hexPath(0, 0, e.r); ctx.fill(); ctx.stroke();
+  } else {
+    // ship
+    ctx.beginPath();
+    ctx.moveTo(e.r + 4, 0); ctx.lineTo(-e.r, e.r * 0.7); ctx.lineTo(-e.r * 0.6, 0); ctx.lineTo(-e.r, -e.r * 0.7);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff4';
+    ctx.fillRect(-4, -3, 10, 6);
+  }
+  ctx.restore();
+  drawHpBar(e.x, e.y - e.r - 8, e.hp, e.maxHp, e.r * 2);
+}
+
+function drawBeerCan(x, y, scale, t, fancy, ent) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.rotate(Math.sin(t * 2) * 0.15);
+  // Body
+  const grd = ctx.createLinearGradient(-10, 0, 10, 0);
+  grd.addColorStop(0, '#6a7078');
+  grd.addColorStop(0.5, '#d0d8e0');
+  grd.addColorStop(1, '#5a6068');
+  ctx.fillStyle = grd;
+  roundRect(-10, -16, 20, 32, 4);
+  ctx.fill();
+  // Blue label
+  ctx.fillStyle = '#1a6aaa';
+  ctx.fillRect(-9, -8, 18, 16);
+  // Star / eye
+  ctx.fillStyle = '#ffd040';
+  ctx.beginPath();
+  ctx.arc(0, -1, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.arc(1, -1, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+  // Rim
+  ctx.strokeStyle = '#e8eef4';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(-10, -16, 20, 4);
+  ctx.strokeRect(-10, 12, 20, 4);
+  // Glow
+  if (fancy || (ent && state.overrideTimer > 0)) {
+    ctx.shadowColor = '#ffb020';
+    ctx.shadowBlur = 15;
+    ctx.strokeStyle = '#ffb02088';
+    ctx.strokeRect(-12, -18, 24, 36);
+  }
+  // Antenna
+  ctx.strokeStyle = '#aaa';
+  ctx.beginPath();
+  ctx.moveTo(0, -16); ctx.lineTo(0, -22);
+  ctx.stroke();
+  ctx.fillStyle = '#ff4060';
+  ctx.beginPath(); ctx.arc(0, -23, 2, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+
+  if (ent && (state.mission?.protectSkippy || state.mission?.finale)) {
+    drawHpBar(x, y - 28, ent.hp, ent.maxHp, 24);
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function drawHpBar(x, y, hp, max, w) {
+  ctx.fillStyle = '#000a';
+  ctx.fillRect(x - w / 2, y, w, 4);
+  ctx.fillStyle = hp / max > 0.3 ? '#3dff8a' : '#ff3b4a';
+  ctx.fillRect(x - w / 2, y, w * clamp(hp / max, 0, 1), 4);
+}
+
+// ── Loop ──────────────────────────────────────────────────
+let last = performance.now();
+function frame(now) {
+  const dt = clamp((now - last) / 1000, 0, 0.05);
+  last = now;
+  update(dt);
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ── UI bindings ───────────────────────────────────────────
+$('btnStart').onclick = () => {
+  AudioSys.resume();
+  save = loadSave() || defaultSave();
+  state.selectedMission = Math.min(save.missionUnlocked, MISSIONS.length - 1);
+  openMissionSelect();
+};
+$('btnContinue').onclick = () => {
+  save = loadSave() || defaultSave();
+  state.selectedMission = Math.min(save.missionUnlocked, MISSIONS.length - 1);
+  openMissionSelect();
+};
+$('btnBackTitle').onclick = () => {
+  state.mode = 'title';
+  show('titleScreen');
+  $('hud').classList.add('hidden');
+  updateContinueBtn();
+};
+$('btnLaunch').onclick = () => openBrief();
+$('btnDeploy').onclick = () => startMission();
+$('btnResume').onclick = () => togglePause();
+$('btnAbort').onclick = () => {
+  state.mode = 'result';
+  endMission(false, false);
+};
+$('btnResultContinue').onclick = () => {
+  updateContinueBtn();
+  openMissionSelect();
+};
+$('btnRestartCampaign').onclick = () => {
+  save = defaultSave();
+  persist();
+  updateContinueBtn();
+  state.mode = 'title';
+  show('titleScreen');
+};
+
+function updateContinueBtn() {
+  const s = loadSave();
+  if (s && s.missionUnlocked > 0) {
+    $('btnContinue').style.display = '';
+  } else {
+    $('btnContinue').style.display = s && s.missionsCleared?.length ? '' : 'none';
+  }
+}
+updateContinueBtn();
+
+// Resize canvas CSS to fit
+function fit() {
+  const wrap = $('wrap');
+  const ar = W / H;
+  let cw = wrap.clientWidth, ch = wrap.clientHeight;
+  if (cw / ch > ar) cw = ch * ar; else ch = cw / ar;
+  canvas.style.width = cw + 'px';
+  canvas.style.height = ch + 'px';
+}
+window.addEventListener('resize', fit);
+fit();
+
+})();
+</script>
+</body>
+</html>
