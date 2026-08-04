@@ -1385,26 +1385,122 @@ function updateEffects(dt) {
   if (messageTimer > 0) messageTimer -= dt;
 }
 
-/* -------------------- DRAW -------------------- */
+/* -------------------- PIXEL FONT (crisp when canvas is scaled) -------------------- */
+// 5x7 glyphs as bit rows (bit4 = leftmost). Only chars we need.
+const FONT = {
+  " ": [0,0,0,0,0,0,0],
+  "0": [0x0E,0x11,0x13,0x15,0x19,0x11,0x0E],
+  "1": [0x04,0x0C,0x04,0x04,0x04,0x04,0x0E],
+  "2": [0x0E,0x11,0x01,0x02,0x04,0x08,0x1F],
+  "3": [0x0E,0x11,0x01,0x06,0x01,0x11,0x0E],
+  "4": [0x02,0x06,0x0A,0x12,0x1F,0x02,0x02],
+  "5": [0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E],
+  "6": [0x06,0x08,0x10,0x1E,0x11,0x11,0x0E],
+  "7": [0x1F,0x01,0x02,0x04,0x08,0x08,0x08],
+  "8": [0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E],
+  "9": [0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C],
+  "A": [0x0E,0x11,0x11,0x1F,0x11,0x11,0x11],
+  "B": [0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E],
+  "C": [0x0E,0x11,0x10,0x10,0x10,0x11,0x0E],
+  "D": [0x1E,0x11,0x11,0x11,0x11,0x11,0x1E],
+  "E": [0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F],
+  "F": [0x1F,0x10,0x10,0x1E,0x10,0x10,0x10],
+  "G": [0x0E,0x11,0x10,0x17,0x11,0x11,0x0F],
+  "H": [0x11,0x11,0x11,0x1F,0x11,0x11,0x11],
+  "I": [0x0E,0x04,0x04,0x04,0x04,0x04,0x0E],
+  "J": [0x01,0x01,0x01,0x01,0x11,0x11,0x0E],
+  "K": [0x11,0x12,0x14,0x18,0x14,0x12,0x11],
+  "L": [0x10,0x10,0x10,0x10,0x10,0x10,0x1F],
+  "M": [0x11,0x1B,0x15,0x15,0x11,0x11,0x11],
+  "N": [0x11,0x19,0x15,0x13,0x11,0x11,0x11],
+  "O": [0x0E,0x11,0x11,0x11,0x11,0x11,0x0E],
+  "P": [0x1E,0x11,0x11,0x1E,0x10,0x10,0x10],
+  "Q": [0x0E,0x11,0x11,0x11,0x15,0x12,0x0D],
+  "R": [0x1E,0x11,0x11,0x1E,0x14,0x12,0x11],
+  "S": [0x0E,0x11,0x10,0x0E,0x01,0x11,0x0E],
+  "T": [0x1F,0x04,0x04,0x04,0x04,0x04,0x04],
+  "U": [0x11,0x11,0x11,0x11,0x11,0x11,0x0E],
+  "V": [0x11,0x11,0x11,0x11,0x11,0x0A,0x04],
+  "W": [0x11,0x11,0x11,0x15,0x15,0x1B,0x11],
+  "X": [0x11,0x11,0x0A,0x04,0x0A,0x11,0x11],
+  "Y": [0x11,0x11,0x0A,0x04,0x04,0x04,0x04],
+  "Z": [0x1F,0x01,0x02,0x04,0x08,0x10,0x1F],
+  "!": [0x04,0x04,0x04,0x04,0x04,0x00,0x04],
+  "?": [0x0E,0x11,0x01,0x02,0x04,0x00,0x04],
+  ".": [0x00,0x00,0x00,0x00,0x00,0x0C,0x0C],
+  ",": [0x00,0x00,0x00,0x00,0x04,0x04,0x08],
+  ":": [0x00,0x0C,0x0C,0x00,0x0C,0x0C,0x00],
+  "/": [0x01,0x01,0x02,0x04,0x08,0x10,0x10],
+  "-": [0x00,0x00,0x00,0x1F,0x00,0x00,0x00],
+  "+": [0x00,0x04,0x04,0x1F,0x04,0x04,0x00],
+  "'": [0x04,0x04,0x08,0x00,0x00,0x00,0x00],
+  '"': [0x0A,0x0A,0x00,0x00,0x00,0x00,0x00],
+  "(": [0x02,0x04,0x08,0x08,0x08,0x04,0x02],
+  ")": [0x08,0x04,0x02,0x02,0x02,0x04,0x08],
+  "&": [0x0C,0x12,0x14,0x08,0x15,0x12,0x0D],
+  "%": [0x19,0x1A,0x02,0x04,0x08,0x0B,0x13],
+  "<": [0x02,0x04,0x08,0x10,0x08,0x04,0x02],
+  ">": [0x08,0x04,0x02,0x01,0x02,0x04,0x08],
+  "=": [0x00,0x00,0x1F,0x00,0x1F,0x00,0x00],
+  "*": [0x00,0x04,0x15,0x0E,0x15,0x04,0x00],
+  "#": [0x0A,0x0A,0x1F,0x0A,0x1F,0x0A,0x0A],
+  "©": [0x0E,0x11,0x1D,0x15,0x1D,0x11,0x0E],
+};
+// aliases / lowercase map to upper
+for (const ch of "abcdefghijklmnopqrstuvwxyz") FONT[ch] = FONT[ch.toUpperCase()];
+FONT["—"] = FONT["-"];
+FONT["–"] = FONT["-"];
+
+const FONT_W = 5, FONT_H = 7, FONT_GAP = 1;
+
+function measureText(str, scale = 1) {
+  const adv = (FONT_W + FONT_GAP) * scale;
+  return String(str).length * adv - FONT_GAP * scale;
+}
+
 function drawText(str, x, y, color, align = "left", scale = 1) {
+  // Integer scale only — keeps glyphs sharp under CSS upscale
+  scale = Math.max(1, scale | 0);
+  str = String(str);
+  let ox = x | 0;
+  const oy = y | 0;
+  if (align === "center") ox = (x - measureText(str, scale) / 2) | 0;
+  else if (align === "right") ox = (x - measureText(str, scale)) | 0;
+
   ctx.fillStyle = color;
-  ctx.font = `${6 * scale}px "Courier New", monospace`;
-  ctx.textAlign = align;
-  ctx.textBaseline = "top";
-  // pixel-ish: draw with shadow
-  ctx.fillStyle = "#000";
-  ctx.fillText(str, x + 1, y + 1);
-  ctx.fillStyle = color;
-  ctx.fillText(str, x, y);
+  for (let i = 0; i < str.length; i++) {
+    const glyph = FONT[str[i]] || FONT["?"] || FONT[" "];
+    const cx = ox + i * (FONT_W + FONT_GAP) * scale;
+    for (let row = 0; row < FONT_H; row++) {
+      const bits = glyph[row] || 0;
+      for (let col = 0; col < FONT_W; col++) {
+        if (bits & (0x10 >> col)) {
+          ctx.fillRect(cx + col * scale, oy + row * scale, scale, scale);
+        }
+      }
+    }
+  }
+}
+
+function drawTextOutlined(str, x, y, color, align = "left", scale = 1, outline = C.black) {
+  scale = Math.max(1, scale | 0);
+  // 1px outline in screen pixels for contrast
+  const o = 1;
+  for (let dy = -o; dy <= o; dy++) {
+    for (let dx = -o; dx <= o; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      drawText(str, x + dx, y + dy, outline, align, scale);
+    }
+  }
+  drawText(str, x, y, color, align, scale);
 }
 
 function drawHUD() {
-  // Top bar
-  drawText(String(score).padStart(7, "0"), 8, 4, C.white);
-  drawText("HI", W / 2 - 20, 4, C.red);
-  drawText(String(highScore).padStart(7, "0"), W / 2 + 2, 4, C.white);
-  // Stage icons (flowers/badges simplified)
-  drawText("ST " + stage, W - 40, 4, C.cyan);
+  // Top bar — scale 1 is sharp; outline for contrast on stars
+  drawTextOutlined(String(score).padStart(7, "0"), 8, 4, C.white, "left", 1);
+  drawTextOutlined("HI", W / 2 - 18, 4, C.red, "left", 1);
+  drawTextOutlined(String(highScore).padStart(7, "0"), W / 2 + 2, 4, C.white, "left", 1);
+  drawTextOutlined("ST " + stage, W - 8, 4, C.cyan, "right", 1);
 
   // Lives in reserve as mini ships
   for (let i = 0; i < Math.min(lives, 6); i++) {
@@ -1415,46 +1511,40 @@ function drawHUD() {
     rect(lx + 2, ly - 3, 2, 2, C.red);
   }
   if (dualFighter) {
-    drawText("DUAL", W - 36, H - 12, C.green);
+    drawTextOutlined("DUAL", W - 8, H - 12, C.green, "right", 1);
   } else if (capturedShip) {
-    drawText("CAPT", W - 36, H - 12, C.orange);
+    drawTextOutlined("CAPT", W - 8, H - 12, C.orange, "right", 1);
   }
 }
 
 function drawTitle() {
   rect(0, 0, W, H, C.black);
   drawStars();
-  // GALAGA logo
-  const logo = "GALAGA";
-  ctx.font = "bold 22px Courier New, monospace";
-  ctx.textAlign = "center";
-  ctx.fillStyle = C.red;
-  ctx.fillText(logo, W / 2 + 1, 70 + 1);
-  ctx.fillStyle = C.yellow;
-  ctx.fillText(logo, W / 2, 70);
+  // GALAGA logo — large pixel font (crisp)
+  drawTextOutlined("GALAGA", W / 2, 52, C.yellow, "center", 3, C.dred);
 
-  drawText("© 1981 NAMCO  —  FAN CLONE", W / 2, 100, C.gray, "center");
-  drawText("HIGH SCORE  " + String(highScore).padStart(7, "0"), W / 2, 130, C.white, "center");
+  drawTextOutlined("C 1981 NAMCO - FAN CLONE", W / 2, 90, C.gray, "center", 1);
+  drawTextOutlined("HIGH SCORE " + String(highScore).padStart(7, "0"), W / 2, 112, C.white, "center", 1);
 
   // Demo enemies
-  drawBoss(W / 2 - 40, 160, 0, 2, false);
-  drawButterfly(W / 2, 160, 0, frame);
-  drawBee(W / 2 + 40, 160, 0, frame);
+  drawBoss(W / 2 - 40, 148, 0, 2, false);
+  drawButterfly(W / 2, 148, 0, frame);
+  drawBee(W / 2 + 40, 148, 0, frame);
 
   if ((frame % 60) < 40) {
-    drawText("PRESS SPACE / TAP TO START", W / 2, 200, C.cyan, "center");
+    drawTextOutlined("PRESS SPACE / TAP TO START", W / 2, 180, C.cyan, "center", 1);
   }
 
-  drawText("← → MOVE   SPACE FIRE   P PAUSE", W / 2, 230, C.gray, "center", 0.9);
-  drawText("MOUSE/TOUCH: DRAG TO MOVE & FIRE", W / 2, 242, C.gray, "center", 0.9);
-  drawText("RESCUE CAPTURED SHIP FOR DUAL FIGHTER!", W / 2, 260, C.green, "center", 0.85);
+  drawTextOutlined("ARROWS MOVE  SPACE FIRE  P PAUSE", W / 2, 210, C.gray, "center", 1);
+  drawTextOutlined("MOUSE/TOUCH: DRAG TO MOVE & FIRE", W / 2, 224, C.gray, "center", 1);
+  drawTextOutlined("RESCUE CAPTURED SHIP FOR DUAL!", W / 2, 248, C.green, "center", 1);
 }
 
 function drawGameOver() {
-  drawText("GAME OVER", W / 2, H / 2 - 20, C.red, "center", 1.5);
-  drawText("SCORE  " + String(score).padStart(7, "0"), W / 2, H / 2 + 10, C.white, "center");
+  drawTextOutlined("GAME OVER", W / 2, H / 2 - 24, C.red, "center", 2);
+  drawTextOutlined("SCORE " + String(score).padStart(7, "0"), W / 2, H / 2 + 8, C.white, "center", 1);
   if ((frame % 60) < 40) {
-    drawText("PRESS SPACE / TAP", W / 2, H / 2 + 40, C.cyan, "center");
+    drawTextOutlined("PRESS SPACE / TAP", W / 2, H / 2 + 32, C.cyan, "center", 1);
   }
 }
 
@@ -1501,17 +1591,17 @@ function render() {
   // Explosions & scores
   for (const ex of explosions) drawExplosion(ex.x, ex.y, ex.t, ex.max);
   for (const f of floatScores) {
-    drawText(f.text, f.x, f.y, C.yellow, "center");
+    drawTextOutlined(f.text, f.x, f.y, C.yellow, "center", 1);
   }
 
   // Messages
   if (messageTimer > 0 && message) {
-    drawText(message, W / 2, H / 2 - 10, C.white, "center", 1.2);
+    drawTextOutlined(message, W / 2, H / 2 - 10, C.white, "center", 2);
   }
 
   if (paused) {
     rect(40, H / 2 - 20, W - 80, 40, "#000000aa");
-    drawText("PAUSED", W / 2, H / 2 - 6, C.cyan, "center", 1.4);
+    drawTextOutlined("PAUSED", W / 2, H / 2 - 6, C.cyan, "center", 2);
   }
 
   if (state === "gameover") drawGameOver();
@@ -1520,7 +1610,7 @@ function render() {
 
   // Challenge progress
   if (challengeMode && state === "playing") {
-    drawText("HIT " + challengeHits + "/" + challengeTotal, W / 2, 16, C.yellow, "center");
+    drawTextOutlined("HIT " + challengeHits + "/" + challengeTotal, W / 2, 16, C.yellow, "center", 1);
   }
 }
 
