@@ -356,7 +356,8 @@ function getTouchLayout() {
   const btnH = barH - pad * 1.35;
   const dirW = Math.min(70, Math.max(52, W * 0.15));
   const fireW = Math.min(96, Math.max(72, W * 0.22));
-  const pauseW = Math.min(54, Math.max(42, W * 0.11));
+  // Wide enough for both "PAUSE" and "RESUME" labels
+  const pauseW = Math.min(96, Math.max(78, W * 0.2));
   return {
     top, barH, pad,
     left:  { x: pad, y: top + pad * 0.65, w: dirW, h: btnH, id: "left" },
@@ -2098,7 +2099,13 @@ function drawTouchControls() {
       ctx.closePath();
       ctx.fill();
     } else {
-      ctx.font = `700 ${Math.min(13, r.h * 0.26)}px system-ui, sans-serif`;
+      // Fit label (PAUSE / RESUME) inside button width
+      let fs = Math.min(13, r.h * 0.28);
+      ctx.font = `700 ${fs}px system-ui, sans-serif`;
+      while (fs > 9 && ctx.measureText(label).width > r.w - 12) {
+        fs -= 0.5;
+        ctx.font = `700 ${fs}px system-ui, sans-serif`;
+      }
       ctx.fillText(label, cx, cy + 1);
     }
     ctx.restore();
