@@ -2144,57 +2144,73 @@ function drawTouchControls() {
 }
 
 function drawHUD() {
-  const pad = Math.max(16, W * 0.02);
+  // Compact HUD on phones so score panels don’t dominate the screen
+  const phone = isPhone || showTouchControls;
+  const s = phone ? 0.62 : 1; // overall HUD scale
+  const pad = phone ? Math.max(8, W * 0.015) : Math.max(16, W * 0.02);
+  const panelH = Math.round(64 * s);
+  const scoreW = Math.round((phone ? 132 : 180) * (phone ? 1 : s));
+  const hiW = Math.round((phone ? 140 : 200) * (phone ? 1 : s));
+  const stW = Math.round((phone ? 88 : 140) * (phone ? 1 : s));
+  const labelSize = Math.round(11 * s);
+  const valueSize = Math.round(26 * s);
+  const insetX = Math.round(14 * s);
+  const labelY = pad + Math.round(18 * s);
+  const valueY = pad + Math.round(44 * s);
+  const glow = phone ? 6 : 12;
+
   // Score
-  drawHudPanel(pad, pad, 180, 64);
+  drawHudPanel(pad, pad, scoreW, panelH);
   ctx.textAlign = "left";
-  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.font = `600 ${labelSize}px system-ui, sans-serif`;
   ctx.fillStyle = "rgba(160,200,255,0.7)";
   ctx.shadowBlur = 0;
-  ctx.fillText("SCORE", pad + 14, pad + 20);
-  ctx.font = "700 26px system-ui, sans-serif";
+  ctx.fillText("SCORE", pad + insetX, labelY);
+  ctx.font = `700 ${valueSize}px system-ui, sans-serif`;
   ctx.fillStyle = "#fff";
   ctx.shadowColor = "#4af";
-  ctx.shadowBlur = 12;
-  ctx.fillText(String(score).padStart(7, "0"), pad + 14, pad + 48);
+  ctx.shadowBlur = glow;
+  ctx.fillText(String(score).padStart(7, "0"), pad + insetX, valueY);
   ctx.shadowBlur = 0;
 
   // High
-  drawHudPanel(W / 2 - 100, pad, 200, 64);
+  drawHudPanel(W / 2 - hiW / 2, pad, hiW, panelH);
   ctx.textAlign = "center";
-  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.font = `600 ${labelSize}px system-ui, sans-serif`;
   ctx.fillStyle = "rgba(255,120,140,0.85)";
-  ctx.fillText("HIGH SCORE", W / 2, pad + 20);
-  ctx.font = "700 26px system-ui, sans-serif";
+  ctx.fillText(phone ? "HIGH" : "HIGH SCORE", W / 2, labelY);
+  ctx.font = `700 ${valueSize}px system-ui, sans-serif`;
   ctx.fillStyle = "#fff";
   ctx.shadowColor = "#f66";
-  ctx.shadowBlur = 10;
-  ctx.fillText(String(highScore).padStart(7, "0"), W / 2, pad + 48);
+  ctx.shadowBlur = glow;
+  ctx.fillText(String(highScore).padStart(7, "0"), W / 2, valueY);
   ctx.shadowBlur = 0;
 
   // Stage
-  drawHudPanel(W - pad - 140, pad, 140, 64);
+  drawHudPanel(W - pad - stW, pad, stW, panelH);
   ctx.textAlign = "right";
-  ctx.font = "600 11px system-ui, sans-serif";
+  ctx.font = `600 ${labelSize}px system-ui, sans-serif`;
   ctx.fillStyle = "rgba(120,255,220,0.8)";
-  ctx.fillText("STAGE", W - pad - 14, pad + 20);
-  ctx.font = "700 26px system-ui, sans-serif";
+  ctx.fillText(phone ? "ST" : "STAGE", W - pad - insetX, labelY);
+  ctx.font = `700 ${valueSize}px system-ui, sans-serif`;
   ctx.fillStyle = "#fff";
   ctx.shadowColor = "#0fa";
-  ctx.shadowBlur = 10;
-  ctx.fillText(String(stage), W - pad - 14, pad + 48);
+  ctx.shadowBlur = glow;
+  ctx.fillText(String(stage), W - pad - insetX, valueY);
   ctx.shadowBlur = 0;
 
   // Lives (above touch bar on phones)
-  const ly = (showTouchControls ? playBottom : H) - pad - 20;
+  const ly = (showTouchControls ? playBottom : H) - pad - (phone ? 14 : 20);
+  const lifeScale = phone ? 0.42 : 0.55;
+  const lifeGap = phone ? 20 : 28;
   for (let i = 0; i < Math.min(lives, 8); i++) {
-    const lx = pad + 18 + i * 28;
+    const lx = pad + (phone ? 12 : 18) + i * lifeGap;
     ctx.save();
     ctx.translate(lx, ly);
-    ctx.scale(0.55, 0.55);
+    ctx.scale(lifeScale, lifeScale);
     ctx.fillStyle = "#5ab0ff";
     ctx.shadowColor = "#4af";
-    ctx.shadowBlur = 8;
+    ctx.shadowBlur = phone ? 4 : 8;
     ctx.beginPath();
     ctx.moveTo(0, -14);
     ctx.lineTo(8, 8);
@@ -2206,39 +2222,42 @@ function drawHUD() {
 
   // Status chips
   if (dualFighter) {
-    drawChip(W - pad - 70, ly - 6, "DUAL", "#5f8", "#0a3");
+    drawChip(W - pad - (phone ? 48 : 70), ly - (phone ? 2 : 6), "DUAL", "#5f8", "#0a3", phone);
   } else if (capturedShip) {
-    drawChip(W - pad - 70, ly - 6, "CAPTIVE", "#f86", "#501");
+    drawChip(W - pad - (phone ? 48 : 70), ly - (phone ? 2 : 6), "CAPTIVE", "#f86", "#501", phone);
   }
 
   if (challengeMode && state === "playing") {
     ctx.textAlign = "center";
-    ctx.font = "700 15px system-ui, sans-serif";
+    ctx.font = `700 ${Math.round(15 * s)}px system-ui, sans-serif`;
     ctx.fillStyle = "#ffe566";
     ctx.shadowColor = "#fd6";
-    ctx.shadowBlur = 10;
-    ctx.fillText(`HIT  ${challengeHits} / ${challengeTotal}`, W / 2, pad + 88);
+    ctx.shadowBlur = phone ? 5 : 10;
+    ctx.fillText(`HIT  ${challengeHits} / ${challengeTotal}`, W / 2, pad + panelH + Math.round(18 * s));
     ctx.shadowBlur = 0;
   }
 }
 
-function drawChip(x, y, label, fg, bg) {
+function drawChip(x, y, label, fg, bg, phone = false) {
+  const s = phone ? 0.72 : 1;
+  const w = 80 * s, h = 24 * s;
   ctx.save();
   ctx.fillStyle = bg;
   ctx.globalAlpha = 0.85;
   ctx.beginPath();
-  ctx.roundRect(x - 40, y - 12, 80, 24, 12);
+  ctx.roundRect(x - w / 2, y - h / 2, w, h, 12 * s);
   ctx.fill();
   ctx.globalAlpha = 1;
   ctx.strokeStyle = fg;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = phone ? 1 : 1.5;
   ctx.stroke();
-  ctx.font = "700 12px system-ui, sans-serif";
+  ctx.font = `700 ${Math.round(12 * s)}px system-ui, sans-serif`;
   ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
   ctx.fillStyle = fg;
   ctx.shadowColor = fg;
-  ctx.shadowBlur = 8;
-  ctx.fillText(label, x, y + 4);
+  ctx.shadowBlur = phone ? 4 : 8;
+  ctx.fillText(label, x, y + 1);
   ctx.restore();
 }
 
