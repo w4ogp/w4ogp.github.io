@@ -43,7 +43,25 @@ const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
 
 let W = 0, H = 0, DPR = 1;
 let playLeft = 0, playRight = 0, playW = 0;
-const PLAY_ASPECT = 0.62; // core combat column; rest is cinematic space
+let playBottom = 0; // bottom of combat area (above touch bar on phones)
+let touchBarH = 0;
+let isPhone = false;
+let showTouchControls = false;
+
+function detectPhone() {
+  const ua = navigator.userAgent || "";
+  const uaPhone = /iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|IEMobile|Opera Mini|webOS/i.test(ua);
+  const uaTablet = /iPad|Android(?!.*Mobile)|Tablet/i.test(ua);
+  const coarse = window.matchMedia("(pointer: coarse)").matches;
+  const noHover = window.matchMedia("(hover: none)").matches;
+  const touchPoints = navigator.maxTouchPoints || 0;
+  const shortSide = Math.min(window.innerWidth, window.innerHeight);
+  const longSide = Math.max(window.innerWidth, window.innerHeight);
+  // Phone-like: mobile UA, or coarse touch + compact screen (not large tablet landscape)
+  const compact = shortSide <= 520 || (shortSide <= 700 && longSide <= 920);
+  return uaPhone || (coarse && noHover && touchPoints > 0 && compact) ||
+    (touchPoints > 0 && noHover && compact && !uaTablet);
+}
 
 let starFieldW = 0, starFieldH = 0;
 function resize() {
@@ -55,10 +73,14 @@ function resize() {
   canvas.style.width = W + "px";
   canvas.style.height = H + "px";
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
-  // Full-screen playfield (use entire viewport)
   playLeft = 0;
   playRight = W;
   playW = W;
+  isPhone = detectPhone();
+  showTouchControls = isPhone;
+  // Reserve bottom strip for on-screen controls on phones
+  touchBarH = showTouchControls ? Math.max(100, Math.min(132, H * 0.17)) : 0;
+  playBottom = H - touchBarH;
   // Rebuild starfield when viewport changes meaningfully (after first init)
   if (starFieldW > 0 &&
       (Math.abs(W - starFieldW) > 40 || Math.abs(H - starFieldH) > 40)) {
@@ -301,7 +323,9 @@ const SFX = (() => {
 
 /* -------------------- Input -------------------- */
 const keys = Object.create(null);
-const pointer = { active: false, x: 0, y: 0 };
+const pointer = { active: false, x: 0, y: 0 }; // free drag (desktop / non-button)
+const touchPad = { left: false, right: false, fire: false };
+const pointerRoles = new Map(); // pointerId -> 'left'|'right'|'fire'|'pause'|'drag'
 
 window.addEventListener("keydown", e => {
   keys[e.code] = true;
@@ -309,7 +333,7 @@ window.addEventListener("keydown", e => {
   SFX.resume();
   if (state === "title" || state === "gameover") {
     if (e.code === "Space" || e.code === "Enter") startGame();
-  } else if (state === "playing" && e.code === "KeyP") {
+  } else if ((state === "playing" || state === "stageintro") && e.code === "KeyP") {
     paused = !paused;
     SFX.ui();
   }
@@ -317,23 +341,140 @@ window.addEventListener("keydown", e => {
 window.addEventListener("keyup", e => { keys[e.code] = false; });
 
 function ptrPos(e) {
-  return { x: e.clientX, y: e.clientY };
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * (W / r.width),
+    y: (e.clientY - r.top) * (H / r.height)
+  };
 }
+
+function getTouchLayout() {
+  const barH = touchBarH || Math.max(100, Math.min(132, H * 0.17));
+  const top = H - barH;
+  const pad = Math.max(10, W * 0.025);
+  const gap = 10;
+  const btnH = barH - pad * 1.4;
+  const dirW = Math.min(86, Math.max(64, W * 0.18));
+  const fireW = Math.min(120, Math.max(88, W * 0.26));
+  const pauseW = Math.min(64, Math.max(48, W * 0.12));
+  return {
+    top, barH, pad,
+    left:  { x: pad, y: top + pad * 0.7, w: dirW, h: btnH, id: "left" },
+    right: { x: pad + dirW + gap, y: top + pad * 0.7, w: dirW, h: btnH, id: "right" },
+    fire:  { x: W - pad - fireW, y: top + pad * 0.7, w: fireW, h: btnH, id: "fire" },
+    pause: { x: W * 0.5 - pauseW * 0.5, y: top + pad * 0.85, w: pauseW, h: btnH * 0.7, id: "pause" }
+  };
+}
+
+function hitRect(x, y, r) {
+  return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+
+function hitTouchControl(x, y) {
+  if (!showTouchControls) return null;
+  const L = getTouchLayout();
+  if (y < L.top) return null;
+  if (hitRect(x, y, L.left)) return "left";
+  if (hitRect(x, y, L.right)) return "right";
+  if (hitRect(x, y, L.fire)) return "fire";
+  if (hitRect(x, y, L.pause)) return "pause";
+  return "bar"; // dead zone on bar — don't drag-move ship
+}
+
+function syncTouchPad() {
+  touchPad.left = false;
+  touchPad.right = false;
+  touchPad.fire = false;
+  for (const role of pointerRoles.values()) {
+    if (role === "left") touchPad.left = true;
+    if (role === "right") touchPad.right = true;
+    if (role === "fire") touchPad.fire = true;
+  }
+}
+
+function pointerRolesHasDrag() {
+  for (const role of pointerRoles.values()) {
+    if (role === "drag") return true;
+  }
+  return false;
+}
+
+function releasePointer(id) {
+  pointerRoles.delete(id);
+  syncTouchPad();
+  // keep drag active if any drag pointer remains
+  let drag = false, dx = pointer.x, dy = pointer.y;
+  for (const [pid, role] of pointerRoles) {
+    if (role === "drag") { drag = true; break; }
+  }
+  pointer.active = drag;
+}
+
 canvas.addEventListener("pointerdown", e => {
   SFX.resume();
-  pointer.active = true;
   const p = ptrPos(e);
-  pointer.x = p.x; pointer.y = p.y;
-  if (state === "title" || state === "gameover") startGame();
   try { canvas.setPointerCapture(e.pointerId); } catch {}
+
+  if (state === "title" || state === "gameover") {
+    startGame();
+    return;
+  }
+
+  const btn = hitTouchControl(p.x, p.y);
+  if (showTouchControls && btn && btn !== "bar") {
+    if (btn === "pause") {
+      if (state === "playing" || state === "stageintro") {
+        paused = !paused;
+        SFX.ui();
+      }
+      return;
+    }
+    pointerRoles.set(e.pointerId, btn);
+    syncTouchPad();
+    return;
+  }
+  if (showTouchControls && btn === "bar") {
+    // ignore presses on empty control bar area
+    return;
+  }
+
+  // Free drag move (desktop, or touch above the control bar)
+  pointerRoles.set(e.pointerId, "drag");
+  pointer.active = true;
+  pointer.x = p.x;
+  pointer.y = p.y;
 });
+
 canvas.addEventListener("pointermove", e => {
-  if (!pointer.active) return;
   const p = ptrPos(e);
-  pointer.x = p.x; pointer.y = p.y;
+  const role = pointerRoles.get(e.pointerId);
+  if (!role) return;
+  if (role === "drag") {
+    pointer.x = p.x;
+    pointer.y = p.y;
+    return;
+  }
+  // Allow finger to slide between left/right on the bar
+  if (showTouchControls && (role === "left" || role === "right" || role === "fire")) {
+    const btn = hitTouchControl(p.x, p.y);
+    if (btn === "left" || btn === "right" || btn === "fire") {
+      pointerRoles.set(e.pointerId, btn);
+      syncTouchPad();
+    } else if (btn === "bar" || btn === null) {
+      // keep last direction button while sliding slightly off
+    }
+  }
 });
-canvas.addEventListener("pointerup", () => { pointer.active = false; });
-canvas.addEventListener("pointercancel", () => { pointer.active = false; });
+
+function onPointerEnd(e) {
+  releasePointer(e.pointerId);
+}
+canvas.addEventListener("pointerup", onPointerEnd);
+canvas.addEventListener("pointercancel", onPointerEnd);
+canvas.addEventListener("pointerleave", e => {
+  // only release if we lost capture-less hover; with capture, up handles it
+  if (pointerRoles.has(e.pointerId) && e.buttons === 0) releasePointer(e.pointerId);
+});
 
 /* -------------------- Particles / FX -------------------- */
 const particles = [];
@@ -708,7 +849,11 @@ const enemies = [];
 
 function resetPlayerPos() {
   player.x = W * 0.5;
-  player.y = H * 0.88;
+  player.y = playerShipY();
+}
+function playerShipY() {
+  // Sit above the touch control bar on phones
+  return showTouchControls ? playBottom - Math.max(36, touchBarH * 0.28) : H * 0.88;
 }
 
 /* Formation layout in normalized play space */
@@ -1176,20 +1321,22 @@ function updatePlayer(dt) {
   if (player.invuln > 0) player.invuln -= dt;
 
   let dx = 0;
-  if (keys["ArrowLeft"] || keys["KeyA"]) dx -= 1;
-  if (keys["ArrowRight"] || keys["KeyD"]) dx += 1;
+  if (keys["ArrowLeft"] || keys["KeyA"] || touchPad.left) dx -= 1;
+  if (keys["ArrowRight"] || keys["KeyD"] || touchPad.right) dx += 1;
 
-  if (pointer.active) {
+  // On phones, virtual pad takes priority; free-drag only when actively dragging above the bar
+  if (pointer.active && pointerRolesHasDrag()) {
     player.x = lerp(player.x, clamp(pointer.x, 30, W - 30), clamp(dt * 14, 0, 1));
-  } else {
+  } else if (dx !== 0) {
     player.x += dx * player.speed * dt;
   }
   player.x = clamp(player.x, 30, W - 30);
-  player.y = H * 0.88;
+  player.y = playerShipY();
   player.engine += dt * 20;
 
   if (player.fireCD > 0) player.fireCD -= dt;
-  const want = keys["Space"] || keys["KeyZ"] || keys["KeyX"] || pointer.active;
+  const want = keys["Space"] || keys["KeyZ"] || keys["KeyX"] || touchPad.fire ||
+    (pointer.active && pointerRolesHasDrag() && !showTouchControls);
   const maxB = dualFighter ? 6 : 3;
   const shots = dualFighter ? 2 : 1;
   if (want && player.fireCD <= 0 && pBullets.length + shots <= maxB) {
@@ -1877,6 +2024,125 @@ function drawHudPanel(x, y, w, h) {
   ctx.restore();
 }
 
+function drawTouchControls() {
+  if (!showTouchControls) return;
+  const L = getTouchLayout();
+
+  // Bar background
+  ctx.save();
+  const bg = ctx.createLinearGradient(0, L.top, 0, H);
+  bg.addColorStop(0, "rgba(4, 8, 28, 0.0)");
+  bg.addColorStop(0.15, "rgba(4, 8, 28, 0.72)");
+  bg.addColorStop(1, "rgba(2, 4, 18, 0.94)");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, L.top - 8, W, L.barH + 8);
+  // top edge line
+  ctx.strokeStyle = "rgba(80, 180, 255, 0.35)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, L.top);
+  ctx.lineTo(W, L.top);
+  ctx.stroke();
+
+  function drawBtn(r, label, pressed, accent) {
+    const rad = 16;
+    ctx.save();
+    // body
+    const g = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
+    if (pressed) {
+      g.addColorStop(0, accent.pressTop);
+      g.addColorStop(1, accent.pressBot);
+    } else {
+      g.addColorStop(0, accent.top);
+      g.addColorStop(1, accent.bot);
+    }
+    ctx.fillStyle = g;
+    ctx.strokeStyle = pressed ? accent.edgeOn : accent.edge;
+    ctx.lineWidth = pressed ? 2.5 : 1.5;
+    ctx.shadowColor = pressed ? accent.glow : "rgba(0,0,0,0.4)";
+    ctx.shadowBlur = pressed ? 18 : 6;
+    ctx.beginPath();
+    ctx.roundRect(r.x, r.y, r.w, r.h, rad);
+    ctx.fill();
+    ctx.stroke();
+
+    // label / icon
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = pressed ? "#fff" : accent.text;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+    if (label === "◀" || label === "▶") {
+      // Chevrons drawn as shapes (no font glyph dependency)
+      const s = Math.min(r.w, r.h) * 0.22;
+      ctx.beginPath();
+      if (label === "◀") {
+        ctx.moveTo(cx + s * 0.7, cy - s);
+        ctx.lineTo(cx - s * 0.9, cy);
+        ctx.lineTo(cx + s * 0.7, cy + s);
+      } else {
+        ctx.moveTo(cx - s * 0.7, cy - s);
+        ctx.lineTo(cx + s * 0.9, cy);
+        ctx.lineTo(cx - s * 0.7, cy + s);
+      }
+      ctx.closePath();
+      ctx.fill();
+    } else if (label === "FIRE") {
+      ctx.font = `800 ${Math.min(22, r.h * 0.28)}px system-ui, sans-serif`;
+      ctx.fillText("FIRE", cx, cy - 4);
+      // missile pip
+      ctx.beginPath();
+      ctx.moveTo(cx, cy + 8);
+      ctx.lineTo(cx + 5, cy + 20);
+      ctx.lineTo(cx - 5, cy + 20);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.font = `700 ${Math.min(13, r.h * 0.26)}px system-ui, sans-serif`;
+      ctx.fillText(label, cx, cy + 1);
+    }
+    ctx.restore();
+  }
+
+  const dirAccent = {
+    top: "rgba(30, 60, 120, 0.9)",
+    bot: "rgba(12, 24, 60, 0.95)",
+    pressTop: "rgba(60, 140, 255, 0.95)",
+    pressBot: "rgba(20, 70, 180, 0.95)",
+    edge: "rgba(100, 180, 255, 0.45)",
+    edgeOn: "rgba(160, 220, 255, 0.95)",
+    glow: "rgba(80, 180, 255, 0.75)",
+    text: "rgba(180, 220, 255, 0.95)"
+  };
+  const fireAccent = {
+    top: "rgba(120, 30, 70, 0.9)",
+    bot: "rgba(60, 10, 30, 0.95)",
+    pressTop: "rgba(255, 70, 130, 0.95)",
+    pressBot: "rgba(180, 20, 70, 0.95)",
+    edge: "rgba(255, 120, 170, 0.5)",
+    edgeOn: "rgba(255, 200, 220, 0.95)",
+    glow: "rgba(255, 80, 140, 0.8)",
+    text: "rgba(255, 200, 220, 0.95)"
+  };
+  const pauseAccent = {
+    top: "rgba(40, 50, 70, 0.85)",
+    bot: "rgba(20, 25, 40, 0.9)",
+    pressTop: "rgba(80, 100, 140, 0.95)",
+    pressBot: "rgba(40, 50, 80, 0.95)",
+    edge: "rgba(160, 180, 210, 0.4)",
+    edgeOn: "rgba(220, 230, 255, 0.9)",
+    glow: "rgba(140, 160, 200, 0.5)",
+    text: "rgba(200, 210, 230, 0.9)"
+  };
+
+  drawBtn(L.left, "◀", touchPad.left, dirAccent);
+  drawBtn(L.right, "▶", touchPad.right, dirAccent);
+  drawBtn(L.fire, "FIRE", touchPad.fire, fireAccent);
+  drawBtn(L.pause, paused ? "RESUME" : "PAUSE", false, pauseAccent);
+
+  ctx.restore();
+}
+
 function drawHUD() {
   const pad = Math.max(16, W * 0.02);
   // Score
@@ -1919,8 +2185,8 @@ function drawHUD() {
   ctx.fillText(String(stage), W - pad - 14, pad + 48);
   ctx.shadowBlur = 0;
 
-  // Lives
-  const ly = H - pad - 28;
+  // Lives (above touch bar on phones)
+  const ly = (showTouchControls ? playBottom : H) - pad - 20;
   for (let i = 0; i < Math.min(lives, 8); i++) {
     const lx = pad + 18 + i * 28;
     ctx.save();
@@ -2241,6 +2507,13 @@ function render() {
     drawMessage();
     if (paused) drawPaused();
     if (state === "gameover") drawGameOver();
+  }
+  // On-screen controls always on top when on a phone
+  if (showTouchControls && state !== "title") {
+    drawTouchControls();
+  } else if (showTouchControls && state === "title") {
+    // subtle hint strip on title
+    drawTouchControls();
   }
 }
 
