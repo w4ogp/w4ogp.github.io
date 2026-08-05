@@ -79,7 +79,7 @@ function resize() {
   isPhone = detectPhone();
   showTouchControls = isPhone;
   // Reserve bottom strip for on-screen controls on phones
-  touchBarH = showTouchControls ? Math.max(100, Math.min(132, H * 0.17)) : 0;
+  touchBarH = showTouchControls ? Math.max(78, Math.min(108, H * 0.135)) : 0;
   playBottom = H - touchBarH;
   // Rebuild starfield when viewport changes meaningfully (after first init)
   if (starFieldW > 0 &&
@@ -349,20 +349,20 @@ function ptrPos(e) {
 }
 
 function getTouchLayout() {
-  const barH = touchBarH || Math.max(100, Math.min(132, H * 0.17));
+  const barH = touchBarH || Math.max(78, Math.min(108, H * 0.135));
   const top = H - barH;
-  const pad = Math.max(10, W * 0.025);
-  const gap = 10;
-  const btnH = barH - pad * 1.4;
-  const dirW = Math.min(86, Math.max(64, W * 0.18));
-  const fireW = Math.min(120, Math.max(88, W * 0.26));
-  const pauseW = Math.min(64, Math.max(48, W * 0.12));
+  const pad = Math.max(8, W * 0.02);
+  const gap = 8;
+  const btnH = barH - pad * 1.35;
+  const dirW = Math.min(70, Math.max(52, W * 0.15));
+  const fireW = Math.min(96, Math.max(72, W * 0.22));
+  const pauseW = Math.min(54, Math.max(42, W * 0.11));
   return {
     top, barH, pad,
-    left:  { x: pad, y: top + pad * 0.7, w: dirW, h: btnH, id: "left" },
-    right: { x: pad + dirW + gap, y: top + pad * 0.7, w: dirW, h: btnH, id: "right" },
-    fire:  { x: W - pad - fireW, y: top + pad * 0.7, w: fireW, h: btnH, id: "fire" },
-    pause: { x: W * 0.5 - pauseW * 0.5, y: top + pad * 0.85, w: pauseW, h: btnH * 0.7, id: "pause" }
+    left:  { x: pad, y: top + pad * 0.65, w: dirW, h: btnH, id: "left" },
+    right: { x: pad + dirW + gap, y: top + pad * 0.65, w: dirW, h: btnH, id: "right" },
+    fire:  { x: W - pad - fireW, y: top + pad * 0.65, w: fireW, h: btnH, id: "fire" },
+    pause: { x: W * 0.5 - pauseW * 0.5, y: top + pad * 0.8, w: pauseW, h: btnH * 0.68, id: "pause" }
   };
 }
 
@@ -2045,7 +2045,7 @@ function drawTouchControls() {
   ctx.stroke();
 
   function drawBtn(r, label, pressed, accent) {
-    const rad = 16;
+    const rad = 12;
     ctx.save();
     // body
     const g = ctx.createLinearGradient(r.x, r.y, r.x, r.y + r.h);
