@@ -2527,11 +2527,8 @@ function render() {
     if (paused) drawPaused();
     if (state === "gameover") drawGameOver();
   }
-  // On-screen controls always on top when on a phone
+  // On-screen controls on phone during play only (not title / opening screen)
   if (showTouchControls && state !== "title") {
-    drawTouchControls();
-  } else if (showTouchControls && state === "title") {
-    // subtle hint strip on title
     drawTouchControls();
   }
 }
