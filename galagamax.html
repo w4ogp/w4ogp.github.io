@@ -2265,14 +2265,18 @@ function drawTitle() {
   const cx = W / 2;
   const logoSize = Math.min(92, W * 0.11);
   const maxSize = Math.min(40, W * 0.05);
-  // Layout: tagline → logo → full reflection → MAX  (nothing overlapping)
-  const logoY = Math.max(H * 0.24, logoSize * 1.35); // baseline of main "GALAGA"
+  // Layout: tagline → logo → reflection → MAX → ships → instructions (stacked, no overlap)
+  const phone = isPhone || showTouchControls;
+  const logoY = Math.max(H * (phone ? 0.18 : 0.24), logoSize * (phone ? 1.15 : 1.35));
   const logoTop = logoY - logoSize * 0.82;
-  const tagY = Math.max(H * 0.08, logoTop - 28);
+  const tagY = Math.max(H * (phone ? 0.055 : 0.08), logoTop - (phone ? 20 : 28));
   const reflectPad = 10;
-  const reflectH = logoSize * 0.72; // full mirror height (not half-cropped)
-  const maxY = logoY + reflectPad + reflectH + maxSize * 0.85 + 18;
-  const dy = Math.max(H * 0.55, maxY + 56);
+  const reflectH = logoSize * (phone ? 0.55 : 0.72);
+  const maxY = logoY + reflectPad + reflectH + maxSize * 0.85 + (phone ? 10 : 18);
+  // Ships sit under MAX; leave room below for score + start + help lines
+  const textBlockH = phone ? 96 : 110;
+  const shipGap = phone ? 44 : 56;
+  const dy = Math.min(maxY + shipGap, H - textBlockH - 50);
 
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
@@ -2379,29 +2383,40 @@ function drawTitle() {
   ctx.shadowBlur = 0;
 
   // ── Demo units ──
-  drawBoss(cx - 100, dy, 0, 2, false, false);
+  const shipSpread = phone ? Math.min(72, W * 0.2) : 100;
+  drawBoss(cx - shipSpread, dy, 0, 2, false, false);
   drawButterfly(cx, dy, 0, time * 4);
-  drawBee(cx + 100, dy, 0, time * 4);
+  drawBee(cx + shipSpread, dy, 0, time * 4);
 
-  ctx.font = "600 14px system-ui, sans-serif";
+  // All copy is anchored BELOW the ships (never on top of them)
+  const shipBottom = dy + (phone ? 36 : 42);
+  const hiY = shipBottom + (phone ? 28 : 34);
+  const startY = hiY + (phone ? 28 : 34);
+  const helpY = startY + (phone ? 26 : 30);
+
+  ctx.font = `600 ${phone ? 12 : 14}px system-ui, sans-serif`;
   ctx.fillStyle = "rgba(200,220,255,0.7)";
   ctx.shadowBlur = 0;
-  ctx.fillText("HIGH SCORE  " + String(highScore).padStart(7, "0"), cx, dy + 70);
+  ctx.fillText("HIGH SCORE  " + String(highScore).padStart(7, "0"), cx, hiY);
 
   if ((frame % 70) < 45) {
-    ctx.font = "700 18px system-ui, sans-serif";
+    ctx.font = `700 ${phone ? 15 : 18}px system-ui, sans-serif`;
     ctx.fillStyle = "#8ef";
     ctx.shadowColor = "#4af";
-    ctx.shadowBlur = 14;
-    ctx.fillText("PRESS SPACE  ·  TAP TO START", cx, Math.min(H * 0.78, dy + 120));
+    ctx.shadowBlur = phone ? 8 : 14;
+    ctx.fillText(phone ? "TAP TO START" : "PRESS SPACE  ·  TAP TO START", cx, startY);
     ctx.shadowBlur = 0;
   }
 
-  ctx.font = "500 13px system-ui, sans-serif";
+  ctx.font = `500 ${phone ? 11 : 13}px system-ui, sans-serif`;
   ctx.fillStyle = "rgba(160,180,220,0.55)";
-  const helpY = Math.min(H * 0.88, dy + 160);
-  ctx.fillText("← → / A D  move    SPACE  fire    P  pause    drag to play", cx, helpY);
-  ctx.fillText("Rescue a captured fighter for dual firepower", cx, helpY + 20);
+  if (phone) {
+    ctx.fillText("On-screen controls appear after start", cx, helpY);
+    ctx.fillText("Rescue a captured fighter for dual firepower", cx, helpY + 18);
+  } else {
+    ctx.fillText("← → / A D  move    SPACE  fire    P  pause    drag to play", cx, helpY);
+    ctx.fillText("Rescue a captured fighter for dual firepower", cx, helpY + 20);
+  }
 }
 
 function drawMessage() {
