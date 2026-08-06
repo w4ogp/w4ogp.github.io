@@ -103,73 +103,138 @@ const TAU = Math.PI * 2;
 const SFX = (() => {
   let ac, master, musicG, sfxG, started = false;
   let musicTimer = null;
-  let beamOsc = null, beamGain = null;
+  let musicOn = false;
+  let beamNodes = null; // { oscs[], gain }
+  let lastShootT = 0;
 
   function ensure() {
-    if (ac) return;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    ac = new AC();
-    master = ac.createGain(); master.gain.value = 0.65; master.connect(ac.destination);
-    musicG = ac.createGain(); musicG.gain.value = 0.18; musicG.connect(master);
-    sfxG = ac.createGain(); sfxG.gain.value = 0.85; sfxG.connect(master);
+    try {
+      if (ac && ac.state === "closed") {
+        ac = null; master = null; musicG = null; sfxG = null;
+      }
+      if (ac) return true;
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return false;
+      ac = new AC();
+      master = ac.createGain();
+      master.gain.value = 0.65;
+      master.connect(ac.destination);
+      musicG = ac.createGain();
+      musicG.gain.value = 0.16;
+      musicG.connect(master);
+      sfxG = ac.createGain();
+      sfxG.gain.value = 0.85;
+      sfxG.connect(master);
+      return true;
+    } catch {
+      return false;
+    }
   }
+
   function resume() {
-    ensure();
-    if (ac.state === "suspended") ac.resume();
+    if (!ensure()) return;
     started = true;
+    try {
+      if (ac.state === "suspended") {
+        const p = ac.resume();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      }
+    } catch {}
   }
-  function env(g, t0, a, peak, d, s, r, total) {
-    g.gain.setValueAtTime(0.0001, t0);
-    g.gain.exponentialRampToValueAtTime(peak, t0 + a);
-    g.gain.exponentialRampToValueAtTime(Math.max(s, 0.0001), t0 + a + d);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + total);
+
+  // Safe ramps — exponentialRamp throws if value is 0 or negative
+  function rampGain(g, t0, peak, dur) {
+    const p = Math.max(0.0001, peak);
+    try {
+      g.gain.cancelScheduledValues(t0);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.linearRampToValueAtTime(p, t0 + Math.min(0.02, dur * 0.15));
+      g.gain.linearRampToValueAtTime(0.0001, t0 + dur);
+    } catch {
+      try { g.gain.value = p; } catch {}
+    }
   }
+
+  function safeFreqRamp(param, t0, from, to, dur) {
+    try {
+      param.cancelScheduledValues(t0);
+      param.setValueAtTime(Math.max(1, from), t0);
+      param.exponentialRampToValueAtTime(Math.max(1, to), t0 + dur);
+    } catch {
+      try {
+        param.setValueAtTime(from, t0);
+        param.linearRampToValueAtTime(to, t0 + dur);
+      } catch {}
+    }
+  }
+
   function osc(type, freq, dur, vol = 0.15, detune = 0, delay = 0, dest) {
-    ensure();
-    const t0 = ac.currentTime + delay;
-    const o = ac.createOscillator();
-    const g = ac.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, t0);
-    if (detune) o.detune.setValueAtTime(detune, t0);
-    env(g, t0, 0.008, vol, dur * 0.25, vol * 0.35, 0.05, dur);
-    o.connect(g); g.connect(dest || sfxG);
-    o.start(t0); o.stop(t0 + dur + 0.05);
-    return o;
+    try {
+      resume();
+      if (!ac || ac.state === "closed") return null;
+      const t0 = ac.currentTime + delay;
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(Math.max(1, freq), t0);
+      if (detune) o.detune.setValueAtTime(detune, t0);
+      rampGain(g, t0, vol, dur);
+      o.connect(g);
+      g.connect(dest || sfxG);
+      o.start(t0);
+      o.stop(t0 + dur + 0.05);
+      return o;
+    } catch {
+      return null;
+    }
   }
+
   function noiseBurst(dur, vol, freq, q = 1, delay = 0) {
-    ensure();
-    const t0 = ac.currentTime + delay;
-    const n = Math.floor(ac.sampleRate * dur);
-    const buf = ac.createBuffer(1, n, ac.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
-    const src = ac.createBufferSource(); src.buffer = buf;
-    const f = ac.createBiquadFilter();
-    f.type = "bandpass"; f.frequency.value = freq; f.Q.value = q;
-    const g = ac.createGain();
-    g.gain.setValueAtTime(vol, t0);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    src.connect(f); f.connect(g); g.connect(sfxG);
-    src.start(t0); src.stop(t0 + dur + 0.02);
+    try {
+      resume();
+      if (!ac || ac.state === "closed") return;
+      const t0 = ac.currentTime + delay;
+      const n = Math.max(1, Math.floor(ac.sampleRate * dur));
+      const buf = ac.createBuffer(1, n, ac.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+      const src = ac.createBufferSource();
+      src.buffer = buf;
+      const f = ac.createBiquadFilter();
+      f.type = "bandpass";
+      f.frequency.value = freq;
+      f.Q.value = q;
+      const g = ac.createGain();
+      rampGain(g, t0, vol, dur);
+      src.connect(f); f.connect(g); g.connect(sfxG);
+      src.start(t0);
+      src.stop(t0 + dur + 0.02);
+    } catch {}
   }
+
   function shoot() {
-    ensure();
-    const t0 = ac.currentTime;
-    const o = ac.createOscillator();
-    const o2 = ac.createOscillator();
-    const g = ac.createGain();
-    o.type = "square"; o2.type = "triangle";
-    o.frequency.setValueAtTime(920, t0);
-    o.frequency.exponentialRampToValueAtTime(280, t0 + 0.09);
-    o2.frequency.setValueAtTime(1840, t0);
-    o2.frequency.exponentialRampToValueAtTime(400, t0 + 0.07);
-    g.gain.setValueAtTime(0.12, t0);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
-    o.connect(g); o2.connect(g); g.connect(sfxG);
-    o.start(t0); o2.start(t0);
-    o.stop(t0 + 0.12); o2.stop(t0 + 0.1);
+    try {
+      resume();
+      if (!ac || ac.state === "closed") return;
+      // Throttle so held FIRE on phones doesn't exhaust audio voices
+      const now = ac.currentTime;
+      if (now - lastShootT < 0.045) return;
+      lastShootT = now;
+      const t0 = now;
+      const o = ac.createOscillator();
+      const o2 = ac.createOscillator();
+      const g = ac.createGain();
+      o.type = "square";
+      o2.type = "triangle";
+      safeFreqRamp(o.frequency, t0, 920, 280, 0.09);
+      safeFreqRamp(o2.frequency, t0, 1840, 400, 0.07);
+      rampGain(g, t0, 0.12, 0.1);
+      o.connect(g); o2.connect(g); g.connect(sfxG);
+      o.start(t0); o2.start(t0);
+      o.stop(t0 + 0.12); o2.stop(t0 + 0.1);
+    } catch {}
   }
+
   function enemyShot() {
     osc("square", 240, 0.1, 0.07);
     osc("sawtooth", 180, 0.12, 0.04, 0, 0.02);
@@ -186,52 +251,68 @@ const SFX = (() => {
     if (big) noiseBurst(0.5, 0.15, 120, 0.4, 0.05);
   }
   function dive() {
-    ensure();
-    const t0 = ac.currentTime;
-    const o = ac.createOscillator();
-    const g = ac.createGain();
-    const f = ac.createBiquadFilter();
-    o.type = "sawtooth";
-    o.frequency.setValueAtTime(720, t0);
-    o.frequency.exponentialRampToValueAtTime(140, t0 + 0.55);
-    f.type = "lowpass"; f.frequency.setValueAtTime(2400, t0);
-    f.frequency.exponentialRampToValueAtTime(400, t0 + 0.55);
-    g.gain.setValueAtTime(0.09, t0);
-    g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.6);
-    o.connect(f); f.connect(g); g.connect(sfxG);
-    o.start(t0); o.stop(t0 + 0.62);
-  }
-  function startBeam() {
-    ensure();
-    stopBeam();
-    const t0 = ac.currentTime;
-    beamOsc = ac.createOscillator();
-    const o2 = ac.createOscillator();
-    beamGain = ac.createGain();
-    const lfo = ac.createOscillator();
-    const lfoG = ac.createGain();
-    beamOsc.type = "sine"; o2.type = "triangle";
-    beamOsc.frequency.value = 110; o2.frequency.value = 165;
-    lfo.type = "sine"; lfo.frequency.value = 6;
-    lfoG.gain.value = 18;
-    lfo.connect(lfoG); lfoG.connect(beamOsc.frequency);
-    beamGain.gain.setValueAtTime(0.0001, t0);
-    beamGain.gain.exponentialRampToValueAtTime(0.08, t0 + 0.2);
-    beamOsc.connect(beamGain); o2.connect(beamGain); beamGain.connect(sfxG);
-    beamOsc.start(); o2.start(); lfo.start();
-    beamOsc._extras = [o2, lfo];
-  }
-  function stopBeam() {
-    if (!beamGain) return;
     try {
+      resume();
+      if (!ac || ac.state === "closed") return;
       const t0 = ac.currentTime;
-      beamGain.gain.cancelScheduledValues(t0);
-      beamGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
-      const nodes = [beamOsc, ...(beamOsc._extras || [])];
-      setTimeout(() => nodes.forEach(n => { try { n.stop(); } catch {} }), 200);
+      const o = ac.createOscillator();
+      const g = ac.createGain();
+      const f = ac.createBiquadFilter();
+      o.type = "sawtooth";
+      safeFreqRamp(o.frequency, t0, 720, 140, 0.55);
+      f.type = "lowpass";
+      safeFreqRamp(f.frequency, t0, 2400, 400, 0.55);
+      rampGain(g, t0, 0.09, 0.6);
+      o.connect(f); f.connect(g); g.connect(sfxG);
+      o.start(t0); o.stop(t0 + 0.62);
     } catch {}
-    beamOsc = null; beamGain = null;
   }
+
+  function startBeam() {
+    try {
+      resume();
+      stopBeam();
+      if (!ac || ac.state === "closed") return;
+      const t0 = ac.currentTime;
+      const o1 = ac.createOscillator();
+      const o2 = ac.createOscillator();
+      const lfo = ac.createOscillator();
+      const lfoG = ac.createGain();
+      const gain = ac.createGain();
+      o1.type = "sine"; o2.type = "triangle";
+      o1.frequency.value = 110; o2.frequency.value = 165;
+      lfo.type = "sine"; lfo.frequency.value = 6;
+      lfoG.gain.value = 18;
+      lfo.connect(lfoG); lfoG.connect(o1.frequency);
+      gain.gain.setValueAtTime(0.0001, t0);
+      gain.gain.linearRampToValueAtTime(0.08, t0 + 0.2);
+      o1.connect(gain); o2.connect(gain); gain.connect(sfxG);
+      o1.start(); o2.start(); lfo.start();
+      beamNodes = { oscs: [o1, o2, lfo], gain };
+    } catch {
+      beamNodes = null;
+    }
+  }
+
+  function stopBeam() {
+    if (!beamNodes) return;
+    const nodes = beamNodes;
+    beamNodes = null;
+    try {
+      if (ac && nodes.gain) {
+        const t0 = ac.currentTime;
+        nodes.gain.gain.cancelScheduledValues(t0);
+        const cur = nodes.gain.gain.value;
+        nodes.gain.gain.setValueAtTime(Math.max(0.0001, cur || 0.0001), t0);
+        nodes.gain.gain.linearRampToValueAtTime(0.0001, t0 + 0.12);
+      }
+      setTimeout(() => {
+        (nodes.oscs || []).forEach(n => { try { n.stop(); } catch {} });
+        try { nodes.gain.disconnect(); } catch {}
+      }, 180);
+    } catch {}
+  }
+
   function capture() {
     stopBeam();
     for (let i = 0; i < 8; i++) osc("sawtooth", 480 - i * 48, 0.14, 0.1, 0, i * 0.07);
@@ -270,9 +351,12 @@ const SFX = (() => {
   function ui() {
     osc("triangle", 660, 0.05, 0.06);
   }
+
   function startMusic() {
     stopMusic();
-    ensure();
+    resume();
+    if (!ac) return;
+    musicOn = true;
     const pattern = [
       [0, 82], [0.5, 98], [1.0, 110], [1.5, 123],
       [2.0, 110], [2.5, 98], [3.0, 82], [3.5, 73]
@@ -280,40 +364,54 @@ const SFX = (() => {
     const arp = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75];
     const arpNotes = [330, 392, 494, 392, 330, 370, 440, 370, 294, 349, 440, 349, 262, 330, 392, 330];
     function tick() {
-      if (!started || !ac) return;
-      const t0 = ac.currentTime + 0.05;
-      pattern.forEach(([t, f]) => {
-        const o = ac.createOscillator();
-        const g = ac.createGain();
-        const ftr = ac.createBiquadFilter();
-        o.type = "sawtooth";
-        o.frequency.setValueAtTime(f, t0 + t);
-        ftr.type = "lowpass"; ftr.frequency.value = 600;
-        g.gain.setValueAtTime(0.0001, t0 + t);
-        g.gain.exponentialRampToValueAtTime(0.07, t0 + t + 0.04);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + t + 0.45);
-        o.connect(ftr); ftr.connect(g); g.connect(musicG);
-        o.start(t0 + t); o.stop(t0 + t + 0.5);
-      });
-      arp.forEach((t, i) => {
-        const o = ac.createOscillator();
-        const g = ac.createGain();
-        o.type = "square";
-        o.frequency.setValueAtTime(arpNotes[i], t0 + t);
-        g.gain.setValueAtTime(0.0001, t0 + t);
-        g.gain.exponentialRampToValueAtTime(0.035, t0 + t + 0.01);
-        g.gain.exponentialRampToValueAtTime(0.0001, t0 + t + 0.12);
-        o.connect(g); g.connect(musicG);
-        o.start(t0 + t); o.stop(t0 + t + 0.14);
-      });
+      try {
+        if (!musicOn || !started || !ac || ac.state === "closed") return;
+        if (ac.state === "suspended") {
+          ac.resume().catch(() => {});
+          return;
+        }
+        const t0 = ac.currentTime + 0.05;
+        pattern.forEach(([t, f]) => {
+          const o = ac.createOscillator();
+          const g = ac.createGain();
+          const ftr = ac.createBiquadFilter();
+          o.type = "sawtooth";
+          o.frequency.setValueAtTime(f, t0 + t);
+          ftr.type = "lowpass"; ftr.frequency.value = 600;
+          rampGain(g, t0 + t, 0.07, 0.45);
+          o.connect(ftr); ftr.connect(g); g.connect(musicG);
+          o.start(t0 + t); o.stop(t0 + t + 0.5);
+        });
+        arp.forEach((t, i) => {
+          const o = ac.createOscillator();
+          const g = ac.createGain();
+          o.type = "square";
+          o.frequency.setValueAtTime(arpNotes[i], t0 + t);
+          rampGain(g, t0 + t, 0.035, 0.12);
+          o.connect(g); g.connect(musicG);
+          o.start(t0 + t); o.stop(t0 + t + 0.14);
+        });
+      } catch {}
     }
     tick();
     musicTimer = setInterval(tick, 4000);
   }
+
   function stopMusic() {
+    musicOn = false;
     if (musicTimer) clearInterval(musicTimer);
     musicTimer = null;
   }
+
+  // iOS / mobile: unlock + recover after tab switch or interruption
+  function onUnlock() { resume(); }
+  ["pointerdown", "touchstart", "keydown"].forEach(ev => {
+    window.addEventListener(ev, onUnlock, { passive: true });
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") resume();
+  });
+
   return {
     resume, shoot, enemyShot, hit, explode, dive, startBeam, stopBeam,
     capture, rescue, extraLife, stageFanfare, bonus, coin, playerDie, ui,
