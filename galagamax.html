@@ -844,6 +844,16 @@ const player = {
   respawnT: 0,
   engine: 0
 };
+
+/** Player lateral speed (px/s). On phones, scale to screen width so the
+ *  ship does not zip across a narrow viewport too easily. */
+function playerMoveSpeed() {
+  if (isPhone || showTouchControls) {
+    // ~0.58 screen-widths per second (clamped for tiny/tall layouts)
+    return clamp(W * 0.58, 170, 280);
+  }
+  return 420;
+}
 const pBullets = [];
 const eBullets = [];
 const enemies = [];
@@ -1329,7 +1339,7 @@ function updatePlayer(dt) {
   if (pointer.active && pointerRolesHasDrag()) {
     player.x = lerp(player.x, clamp(pointer.x, 30, W - 30), clamp(dt * 14, 0, 1));
   } else if (dx !== 0) {
-    player.x += dx * player.speed * dt;
+    player.x += dx * playerMoveSpeed() * dt;
   }
   player.x = clamp(player.x, 30, W - 30);
   player.y = playerShipY();
