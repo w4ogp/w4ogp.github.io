@@ -943,12 +943,32 @@ const player = {
   engine: 0
 };
 
+/** True when running in phone / compact touch mode. */
+function phoneMode() {
+  return isPhone || showTouchControls;
+}
+
+/**
+ * Mild phone difficulty knobs — compact screens make the game easier
+ * (shorter dives, denser FOV, sticky fire). These nudge pressure up slightly.
+ */
+const PHONE_DIFF = {
+  moveWidthsPerSec: 0.52,   // slower relative traverse than desktop feel
+  fireCD: 0.13,             // desktop 0.10
+  maxBullets: 2,            // desktop 3 (dual still 4)
+  diveIntervalScale: 0.82,  // dives more often
+  maxDiversBonus: 1,        // +1 concurrent diver
+  diveSpeedScale: 1.08,     // slightly faster dives
+  enemyShotScale: 0.88,     // shorter gap between enemy shots
+  enemyAim: 0.32,           // desktop 0.25 bullet vx pull
+  enemyBulletSpeed: 1.08
+};
+
 /** Player lateral speed (px/s). On phones, scale to screen width so the
  *  ship does not zip across a narrow viewport too easily. */
 function playerMoveSpeed() {
-  if (isPhone || showTouchControls) {
-    // ~0.58 screen-widths per second (clamped for tiny/tall layouts)
-    return clamp(W * 0.58, 170, 280);
+  if (phoneMode()) {
+    return clamp(W * PHONE_DIFF.moveWidthsPerSec, 155, 260);
   }
   return 420;
 }
@@ -1409,10 +1429,12 @@ function pickDivers() {
   if (challengeMode || enemiesEntering) return;
   const inForm = enemies.filter(e => e.alive && e.state === "form");
   if (!inForm.length) return;
-  const maxDive = Math.min(5, 1 + (stage / 2 | 0));
+  let maxDive = Math.min(5, 1 + (stage / 2 | 0));
+  if (phoneMode()) maxDive = Math.min(6, maxDive + PHONE_DIFF.maxDiversBonus);
   const diving = enemies.filter(e => e.alive && (e.state === "dive" || e.state === "tractor")).length;
   if (diving >= maxDive) return;
-  const pool = inForm.filter(e => e.type !== 0 || Math.random() < 0.18 + stage * 0.02);
+  const bossChance = phoneMode() ? 0.22 + stage * 0.025 : 0.18 + stage * 0.02;
+  const pool = inForm.filter(e => e.type !== 0 || Math.random() < bossChance);
   if (!pool.length) return;
   startDive(pool[irand(0, pool.length - 1)]);
 }
@@ -1446,7 +1468,9 @@ function updatePlayer(dt) {
   if (player.fireCD > 0) player.fireCD -= dt;
   const want = keys["Space"] || keys["KeyZ"] || keys["KeyX"] || touchPad.fire ||
     (pointer.active && pointerRolesHasDrag() && !showTouchControls);
-  const maxB = dualFighter ? 6 : 3;
+  const maxB = dualFighter
+    ? (phoneMode() ? 4 : 6)
+    : (phoneMode() ? PHONE_DIFF.maxBullets : 3);
   const shots = dualFighter ? 2 : 1;
   if (want && player.fireCD <= 0 && pBullets.length + shots <= maxB) {
     if (dualFighter) {
@@ -1455,7 +1479,7 @@ function updatePlayer(dt) {
     } else {
       pBullets.push({ x: player.x, y: player.y - 28, vy: -780, trail: 0 });
     }
-    player.fireCD = 0.1;
+    player.fireCD = phoneMode() ? PHONE_DIFF.fireCD : 0.1;
     SFX.shoot();
   }
 
@@ -1550,15 +1574,21 @@ function updateEnemies(dt) {
     } else if (e.state === "form") {
       e.x = e.formX; e.y = e.formY; e.angle = 0;
     } else if (e.state === "dive") {
-      const done = followPath(e, dt, 260 + stage * 8);
+      let diveSpd = 260 + stage * 8;
+      if (phoneMode()) diveSpd *= PHONE_DIFF.diveSpeedScale;
+      const done = followPath(e, dt, diveSpd);
       addTrail(e.x, e.y, e.type === 0 ? "#5f8" : e.type === 1 ? "#f6c" : "#fd6", 3);
       e.shootCD -= dt;
       if (e.shootCD <= 0 && e.y > H * 0.15 && e.y < H * 0.75) {
-        e.shootCD = rand(0.45, 1.0) / (1 + stage * 0.04);
+        let gap = rand(0.45, 1.0) / (1 + stage * 0.04);
+        if (phoneMode()) gap *= PHONE_DIFF.enemyShotScale;
+        e.shootCD = gap;
+        const aim = phoneMode() ? PHONE_DIFF.enemyAim : 0.25;
+        const bspd = phoneMode() ? PHONE_DIFF.enemyBulletSpeed : 1;
         eBullets.push({
           x: e.x, y: e.y + 12,
-          vy: 220 + stage * 12,
-          vx: (player.x - e.x) * 0.25
+          vy: (220 + stage * 12) * bspd,
+          vx: (player.x - e.x) * aim
         });
         SFX.enemyShot();
       }
@@ -1648,7 +1678,8 @@ function updateEnemies(dt) {
 
   if (state === "playing" && !challengeMode && !enemiesEntering) {
     diveCD -= dt;
-    const interval = Math.max(0.4, 1.5 - stage * 0.07);
+    let interval = Math.max(0.4, 1.5 - stage * 0.07);
+    if (phoneMode()) interval = Math.max(0.32, interval * PHONE_DIFF.diveIntervalScale);
     if (diveCD <= 0) {
       pickDivers();
       diveCD = interval * rand(0.7, 1.15);
